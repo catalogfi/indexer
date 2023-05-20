@@ -63,10 +63,11 @@ func (r *rpc) HandleJSONRPC(ctx *gin.Context) {
 
 func Default(str command.Storage) RPC {
 	rpc := New(str)
+	rpc.AddCommand(command.GetBestBlockHash())
 	rpc.AddCommand(command.GetBlock())
 	rpc.AddCommand(command.GetBlockCount())
 	rpc.AddCommand(command.GetBlockHash())
-	rpc.AddCommand(command.GetBlockHeader())
+	rpc.AddCommand(command.GetBlockHeader())	
 	rpc.AddCommand(command.GetRawTransaction())
 	rpc.AddCommand(command.ListUnspent())
 	return rpc

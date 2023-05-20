@@ -28,6 +28,22 @@ type Command interface {
 	Query(str Storage, params []interface{}) (interface{}, error)
 }
 
+// getbestblockhash
+type getBestBlockHash struct {
+}
+
+func GetBestBlockHash() Command {
+	return &getBestBlockHash{}
+}
+
+func (g *getBestBlockHash) Name() string {
+	return "getbestblockhash"
+}
+
+func (g *getBestBlockHash) Query(str Storage, params []interface{}) (interface{}, error) {
+	return str.GetLatestBlockHash()
+}
+
 // getblockhash
 type getBlockHash struct {
 }
@@ -41,7 +57,11 @@ func (g *getBlockHash) Name() string {
 }
 
 func (g *getBlockHash) Query(str Storage, params []interface{}) (interface{}, error) {
-	return str.GetLatestBlockHash()
+	height, ok := params[0].(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid parameter type: %T, required a number", params[0])
+	}
+	return str.GetBlockHash(int32(height))
 }
 
 // getblockcount
@@ -216,20 +236,21 @@ func (g *getRawTransaction) Query(str Storage, params []interface{}) (interface{
 	verbose := false
 
 	switch len(params) {
-	case 1:
-
-		param1, ok := params[0].(string)
-		if !ok {
-			return nil, fmt.Errorf("invalid parameter type: %T, required string", params[0])
-		}
-		txHash = param1
+	case 3:
+		fallthrough
 	case 2:
 		param2, ok := params[1].(bool)
 		if !ok {
 			return nil, fmt.Errorf("invalid parameter type: %T, required boolean", params[1])
 		}
 		verbose = param2
-	case 3:
+		fallthrough
+	case 1:
+		param1, ok := params[0].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid parameter type: %T, required string", params[0])
+		}
+		txHash = param1
 	default:
 		return nil, fmt.Errorf("invalid number of parameters: %d, required 1, 2 or 3", len(params))
 	}

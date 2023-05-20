@@ -9,8 +9,9 @@ import (
 type Block struct {
 	gorm.Model
 
-	Hash   string
-	Height int32
+	Hash     string
+	Height   int32
+	IsOrphan bool
 
 	PreviousBlock string
 	Version       int32

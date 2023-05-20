@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -19,8 +18,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// TODO: does not handle reorgs
-// TODO: does not handle pending transactions
+// TODO: test reorgs
+// TODO: test pending transactions
 
 type Storage interface {
 	command.Storage
@@ -45,25 +44,30 @@ func (s *storage) Params() *chaincfg.Params {
 
 func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) error {
 	transactionHash := tx.TxHash().String()
-
-	buf := new(bytes.Buffer)
-	if err := tx.Serialize(buf); err != nil {
-		return err
-	}
-
 	transaction := &model.Transaction{
 		Hash:     transactionHash,
 		LockTime: tx.LockTime,
 		Version:  tx.Version,
-
-		BlockID:    block.ID,
-		BlockHash:  block.Hash,
-		BlockIndex: blockIndex,
-		Block:      block,
 	}
 
-	if result := s.db.Create(transaction); result.Error != nil {
-		return result.Error
+	fOCResult := s.db.FirstOrCreate(transaction, "hash = ?", transactionHash)
+	if fOCResult.Error != nil {
+		return fOCResult.Error
+	}
+
+	if block != nil {
+		transaction.BlockID = block.ID
+		transaction.BlockIndex = blockIndex
+		transaction.BlockHash = block.Hash
+		transaction.Block = block
+		if result := s.db.Save(transaction); result.Error != nil {
+			return result.Error
+		}
+	}
+
+	if fOCResult.RowsAffected == 0 {
+		// If the transaction already exists, we don't need to do anything else
+		return nil
 	}
 
 	for i, txIn := range tx.TxIn {
@@ -151,6 +155,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			Hash:   genesisBlock.Hash().String(),
 			Height: 0,
 
+			IsOrphan:      false,
 			PreviousBlock: genesisBlock.MsgBlock().Header.PrevBlock.String(),
 			Version:       genesisBlock.MsgBlock().Header.Version,
 			Nonce:         genesisBlock.MsgBlock().Header.Nonce,
@@ -161,6 +166,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			return result.Error
 		}
 
+		// This is created for the coinbase transaction
 		resp := s.db.Create(&model.Transaction{
 			Hash: "0000000000000000000000000000000000000000000000000000000000000000",
 		})
@@ -174,14 +180,38 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			return resp.Error
 		}
 
+		if previousBlock.IsOrphan {
+			newlyOrphanedBlock := &model.Block{}
+			if resp := s.db.First(newlyOrphanedBlock, "height = ? AND is_orphan = ?", previousBlock.Height, false); resp.Error != nil {
+				return resp.Error
+			}
+			if err := s.orphanBlock(newlyOrphanedBlock); err != nil {
+				return err
+			}
+
+			previousBlock.IsOrphan = false
+			if resp := s.db.Save(&previousBlock); resp.Error != nil {
+				return resp.Error
+			}
+		}
+
 		height = previousBlock.Height + 1
 	}
 
-	// TODO: handle block reshuffle
+	blockAtHeight := &model.Block{}
+	resp := s.db.First(&blockAtHeight, "height = ?", height)
+	if resp.Error != gorm.ErrRecordNotFound {
+		if resp.Error == nil {
+			return s.orphanBlock(blockAtHeight)
+		}
+		return resp.Error
+	}
+
 	bblock := &model.Block{
 		Hash:   block.Header.BlockHash().String(),
 		Height: height,
 
+		IsOrphan:      false,
 		PreviousBlock: block.Header.PrevBlock.String(),
 		Version:       block.Header.Version,
 		Nonce:         block.Header.Nonce,
@@ -199,6 +229,27 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		}
 	}
 	return nil
+}
+
+func (s *storage) orphanBlock(block *model.Block) error {
+	block.IsOrphan = true
+
+	txs := []model.Transaction{}
+	if resp := s.db.Order("block_index").Find(&txs, "block_hash = ?", block.Hash); resp.Error != nil {
+		return resp.Error
+	}
+
+	for _, tx := range txs {
+		tx.BlockID = 0
+		tx.BlockHash = ""
+		tx.BlockIndex = 0
+		tx.Block = nil
+		if resp := s.db.Save(&tx); resp.Error != nil {
+			return resp.Error
+		}
+	}
+	resp := s.db.Save(block)
+	return resp.Error
 }
 
 func (s *storage) BlockExists(blockhash string) bool {
@@ -220,18 +271,7 @@ func (s *storage) GetPreviousBlockHeight(blockhash string) (int32, error) {
 }
 
 func (s *storage) PutTx(tx *wire.MsgTx) error {
-	// TODO: not required for now
-	return nil
-}
-
-func (s *storage) PutBlockHash(hash *chainhash.Hash) error {
-	// TODO: not required for now
-	return nil
-}
-
-func (s *storage) PutTxHash(hash *chainhash.Hash) error {
-	// TODO: not required for now
-	return nil
+	return s.putTx(tx, nil, 0)
 }
 
 func (s *storage) GetLatestBlockHeight() (int32, error) {
@@ -409,13 +449,19 @@ func (s *storage) addInputsAndOutputs(txHash string, tx *wire.MsgTx) error {
 
 func (s *storage) GetTransaction(txHash string) (command.Transaction, error) {
 	transaction := model.Transaction{}
-	if res := s.db.Joins("Block").First(&transaction, "hash = ?", txHash); res.Error != nil {
+	if res := s.db.Joins("Block").First(&transaction, "transactions.hash = ?", txHash); res.Error != nil {
 		return command.Transaction{}, res.Error
 	}
 	tx := wire.NewMsgTx(transaction.Version)
 	tx.LockTime = transaction.LockTime
 	if err := s.addInputsAndOutputs(txHash, tx); err != nil {
 		return command.Transaction{}, err
+	}
+
+	if transaction.Block == nil {
+		return command.Transaction{
+			Tx: tx,
+		}, nil
 	}
 	return command.Transaction{
 		Tx:        tx,
