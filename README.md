@@ -64,7 +64,7 @@ The Bitcoin Indexer follows a modular architecture with the following folder str
 - **store**: The store folder implements the interfaces defined by the command and peer folders. It handles the actual storage and retrieval of data from the database.
 
 ```
-bitcoin-indexer
+indexer
 ├── cmd
 │   ├── peer
 │   │   ├── main.go
