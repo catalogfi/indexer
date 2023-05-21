@@ -109,4 +109,4 @@ Please ensure that your code adheres to the established coding style and include
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). Feel free to use and modify the code according to the terms specified in the license.
+This project is licensed under the [GNU GENERAL PUBLIC LICENSE Version 3](LICENSE). Feel free to use and modify the code according to the terms specified in the license.
