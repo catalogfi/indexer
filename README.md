@@ -23,14 +23,14 @@ The Bitcoin Indexer provides an RPC server and a peer package for syncing blockc
 
 1. **Peer Package**: The `cmd/peer` package can be used to connect to other Bitcoin nodes and sync the Bitcoin blockchain data. It handles the peer-to-peer communication required to fetch and update the blockchain data. 
 
-   ```shell
+   ```bash
    $ go build ./cmd/peer
    $ ./peer [db options]
    ```
 
 2. **RPC Server**: The `cmd/rpc` package starts an RPC server that exposes the same RPC methods as the original Bitcoin node. This allows you to query the Bitcoin data using standard RPC calls.
 
-   ```shell
+   ```bash
    $ go build ./cmd/rpc
    $ ./rpc [db options]
    ```
