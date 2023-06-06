@@ -41,6 +41,7 @@ func NewPeer(str Storage) (*Peer, error) {
 				sendMsg := wire.NewMsgGetData()
 				for _, inv := range msg.InvList {
 					sendMsg.AddInvVect(inv)
+					fmt.Println("got an inv", inv.Type.String())
 				}
 				p.QueueMessage(sendMsg, done)
 			},
@@ -49,8 +50,11 @@ func NewPeer(str Storage) (*Peer, error) {
 					fmt.Printf("error putting block (%s): %v\n", msg.BlockHash().String(), err)
 				}
 			},
-			OnTx: func(p *peer.Peer, msg *wire.MsgTx) {
-
+			OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
+				fmt.Println("got a tx")
+				if err := str.PutTx(tx); err != nil {
+					fmt.Printf("error putting tx (%s): %v\n", tx.TxHash().String(), err)
+				}
 			},
 		},
 		AllowSelfConns: true,
