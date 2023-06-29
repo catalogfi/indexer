@@ -53,16 +53,17 @@ func (s *storage) GetBlockCount() (int32, error) {
 }
 
 func (s *storage) GetBlockFromHash(blockHash string) (*btcutil.Block, error) {
+	//gets the block
 	block := &model.Block{}
 	if resp := s.db.First(block, "hash = ?", blockHash); resp.Error != nil {
 		return nil, resp.Error
 	}
-
+	//get the prev block hash
 	prevHash, err := chainhash.NewHashFromStr(block.PreviousBlock)
 	if err != nil {
 		return nil, err
 	}
-
+	//get the merkle root hash
 	merkleRootHash, err := chainhash.NewHashFromStr(block.MerkleRoot)
 	if err != nil {
 		return nil, err
