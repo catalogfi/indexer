@@ -223,38 +223,100 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 
 		//agar previousBlock orphan  hai toh same height ke unorphaned block ko orphan kar do aut previousBlock ko unorphan kar do
 		//so as to continue  the prevblock chain
+		// if previousBlock.IsOrphan {
+		// 	newlyOrphanedBlock := &model.Block{}
+		// 	if resp := s.db.First(newlyOrphanedBlock, "height = ? AND is_orphan = ?", previousBlock.Height, false); resp.Error != nil {
+		// 		return resp.Error
+		// 	}
+		// 	if err := s.orphanBlock(newlyOrphanedBlock); err != nil {
+		// 		return err
+		// 	}
+
+		// 	previousBlock.IsOrphan = false
+		// 	if resp := s.db.Save(&previousBlock); resp.Error != nil {
+		// 		return resp.Error
+		// 	}
+		// }
 		if previousBlock.IsOrphan {
-			newlyOrphanedBlock := &model.Block{}
 
-			if resp := s.db.First(newlyOrphanedBlock, "height = ? AND is_orphan = ?", previousBlock.Height, false); resp.Error != nil {
+			//find the currrnt active chains height
+			currHeight, err1 := s.GetLatestUnorphanBlockHeight()
+			if err1 != nil {
+				return err1
+			}
+			ActiveChainEnd := &model.Block{}
+			//is_orphan check here is redundant as already done by the GetLatestUnorphanBlockHeight function
+			if resp := s.db.First(&ActiveChainEnd, "height = ? AND is_orphan = ? ", currHeight, false); resp.Error != nil {
 				return resp.Error
 			}
-			if err := s.orphanBlock(newlyOrphanedBlock); err != nil {
-				return err
+
+			tempBlock := &model.Block{}
+			tempBlock = previousBlock
+			ActiveChainStart := &model.Block{}
+			prevBlock := &model.Block{}
+			prevBlock, err1 = s.GetNormalBlockFromHash(tempBlock.PreviousBlock)
+			if err1 != nil {
+				return err1
+			}
+			//make the whole required chain unorphaned
+			for {
+				if !prevBlock.IsOrphan {
+					if resp := s.db.First(ActiveChainStart, "height = ? AND is_orphan = ?", tempBlock.Height, false); resp.Error != nil {
+						fmt.Printf("no such block exists")
+						return resp.Error
+					}
+					tempBlock.IsOrphan = false
+					if resp := s.db.Save(&tempBlock); resp.Error != nil {
+						return resp.Error
+					}
+					break
+				}
+				tempBlock.IsOrphan = false
+				if resp := s.db.Save(&tempBlock); resp.Error != nil {
+					return resp.Error
+				}
+				tempBlock = prevBlock
+				prevBlock, err1 = s.GetNormalBlockFromHash(prevBlock.PreviousBlock)
+				if err1 != nil {
+					return err1
+				}
+				// tempBlock = tempBlock.PreviousBlock
 			}
 
-			previousBlock.IsOrphan = false
-			if resp := s.db.Save(&previousBlock); resp.Error != nil {
-				return resp.Error
+			//make the prev active chain orphaned
+			temp := &model.Block{}
+			temp = ActiveChainEnd
+			for currHeight >= ActiveChainStart.Height {
+				temp.IsOrphan = true
+				if resp := s.db.Save(&temp); resp.Error != nil {
+					return resp.Error
+				}
+				temp, err1 = s.GetNormalBlockFromHash(temp.PreviousBlock)
+				if err1 != nil {
+					return err1
+				}
+				// temp = temp.PreviousBlock
+				currHeight--
 			}
+
 		}
 
 		height = previousBlock.Height + 1
 		//check if the block height already exists in the database
 		sameHeightBlock := &model.Block{}
 
-		exists := false
+		sameHeightBlockExists := false
 		if resp := s.db.First(&sameHeightBlock, "height = ?", height); resp.Error != nil {
 			if resp.Error != gorm.ErrRecordNotFound {
 				return resp.Error
 			}
 		} else {
-			exists = true
+			sameHeightBlockExists = true
 		}
 
 		//setting first time a block as orphan (which is the one at the same height as the block we get)
 		//dont just make that block orphan but all blocks which came after that block also orphan
-		if !previousBlock.IsOrphan && exists {
+		if !previousBlock.IsOrphan && sameHeightBlockExists {
 			for i := height; ; i++ {
 				sameHeightBlock := &model.Block{}
 				if resp := s.db.First(&sameHeightBlock, "height = ?", i); resp.Error != nil {
@@ -267,9 +329,6 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 				if resp := s.db.Save(&sameHeightBlock); resp.Error != nil {
 					return resp.Error
 				}
-				// if err := s.orphanBlock(sameHeightBlock); err != nil {
-				// 	return err
-				// }
 			}
 		}
 	}

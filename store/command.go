@@ -31,6 +31,16 @@ func (s *storage) GetLatestBlockHeight() (int32, error) {
 	}
 	return block.Height, nil
 }
+func (s *storage) GetLatestUnorphanBlockHeight() (int32, error) {
+	block := &model.Block{}
+	if resp := s.db.Where("is_orphan = ?", false).Order("height desc").First(block); resp.Error != nil {
+		if resp.Error == gorm.ErrRecordNotFound {
+			return -1, nil
+		}
+		return -1, resp.Error
+	}
+	return block.Height, nil
+}
 
 func (s *storage) GetBlockHash(height int32) (string, error) {
 	block := &model.Block{}
@@ -50,6 +60,14 @@ func (s *storage) GetLatestBlockHash() (string, error) {
 
 func (s *storage) GetBlockCount() (int32, error) {
 	return s.GetLatestBlockHeight()
+}
+
+func (s *storage) GetNormalBlockFromHash(blockHash string) (*model.Block, error) {
+	block := &model.Block{}
+	if resp := s.db.First(block, "hash = ?", blockHash); resp.Error != nil {
+		return nil, resp.Error
+	}
+	return block, nil
 }
 
 func (s *storage) GetBlockFromHash(blockHash string) (*btcutil.Block, error) {

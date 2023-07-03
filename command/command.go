@@ -16,6 +16,7 @@ type Storage interface {
 	GetBlockHash(height int32) (string, error)
 	GetLatestBlockHash() (string, error)
 	GetLatestBlockHeight() (int32, error)
+	GetLatestUnorphanBlockHeight() (int32, error)
 	GetTransaction(hash string) (Transaction, error)
 	GetBlockFromHash(hash string) (*btcutil.Block, error)
 	GetHeaderFromHeight(height int32) (BlockHeader, error)
