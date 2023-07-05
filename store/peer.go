@@ -184,7 +184,10 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	height := int32(-1)
 	previousBlock := &model.Block{}
-
+	fmt.Println("block.Header.PrevBlock.String(): ", block.Header.PrevBlock.String())
+	fmt.Println("s.params.GenesisBlock.BlockHash().String(): ", s.params.GenesisBlock.BlockHash().String())
+	// DogeCoinGenesisBlockHash := "3d2160a3b5dc4a9d62e7e66a295f70313ac808440ef7400d6c0772171ce973a5"
+	// if block.Header.PrevBlock.String() == DogeCoinGenesisBlockHash {
 	if block.Header.PrevBlock.String() == s.params.GenesisBlock.BlockHash().String() {
 		//this is triggered if first block is created in the blockchain
 		genesisBlock := btcutil.NewBlock(s.params.GenesisBlock)
@@ -381,6 +384,104 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 
 	return nil
 }
+
+// func (s *storage) PutBlock(block *wire.MsgBlock) error {
+// 	height := int32(-1)
+// 	previousBlock := &model.Block{}
+// 	//this is triggered when there are no blocks in the blockchain
+// 	fmt.Println("block.Header.PrevBlock.String(): ", block.Header.PrevBlock.String())
+// 	fmt.Println("s.params.GenesisBlock.BlockHash().String(): ", s.params.GenesisBlock.BlockHash().String())
+// 	DogeCoinGenesisBlockHash := "3d2160a3b5dc4a9d62e7e66a295f70313ac808440ef7400d6c0772171ce973a5"
+// 	// if block.Header.PrevBlock.String() == s.params.GenesisBlock.BlockHash().String() {
+// 	if block.Header.PrevBlock.String() == DogeCoinGenesisBlockHash {
+// 		genesisBlock := btcutil.NewBlock(s.params.GenesisBlock)
+// 		genesisBlock.SetHeight(0)
+// 		if result := s.db.Create(&model.Block{
+// 			Hash:   genesisBlock.Hash().String(),
+// 			Height: 0,
+
+// 			IsOrphan:      false,
+// 			PreviousBlock: genesisBlock.MsgBlock().Header.PrevBlock.String(),
+// 			Version:       genesisBlock.MsgBlock().Header.Version,
+// 			Nonce:         genesisBlock.MsgBlock().Header.Nonce,
+// 			Timestamp:     genesisBlock.MsgBlock().Header.Timestamp,
+// 			Bits:          genesisBlock.MsgBlock().Header.Bits,
+// 			MerkleRoot:    genesisBlock.MsgBlock().Header.MerkleRoot.String(),
+// 		}); result.Error != nil {
+// 			return result.Error
+// 		}
+
+// 		// This is created for the coinbase transaction
+// 		resp := s.db.Create(&model.Transaction{
+// 			Hash: "0000000000000000000000000000000000000000000000000000000000000000",
+// 		})
+// 		if resp.Error != nil {
+// 			return resp.Error
+// 		}
+
+// 		height = 1
+// 	} else {
+// 		if resp := s.db.First(&previousBlock, "hash = ?", block.Header.PrevBlock.String()); resp.Error != nil {
+// 			return resp.Error
+// 		}
+
+// 		if previousBlock.IsOrphan {
+// 			newlyOrphanedBlock := &model.Block{}
+// 			if resp := s.db.First(newlyOrphanedBlock, "height = ? AND is_orphan = ?", previousBlock.Height, false); resp.Error != nil {
+// 				return resp.Error
+// 			}
+// 			if err := s.orphanBlock(newlyOrphanedBlock); err != nil {
+// 				return err
+// 			}
+
+// 			previousBlock.IsOrphan = false
+// 			if resp := s.db.Save(&previousBlock); resp.Error != nil {
+// 				return resp.Error
+// 			}
+// 		}
+
+// 		height = previousBlock.Height + 1
+// 	}
+
+// 	blockAtHeight := &model.Block{}
+// 	resp := s.db.First(&blockAtHeight, "height = ?", height)
+// 	if resp.Error != gorm.ErrRecordNotFound {
+// 		if resp.Error == nil {
+// 			return s.orphanBlock(blockAtHeight)
+// 		}
+// 		return resp.Error
+// 	}
+
+// 	bblock := &model.Block{
+// 		Hash:   block.Header.BlockHash().String(),
+// 		Height: height,
+
+// 		IsOrphan:      false,
+// 		PreviousBlock: block.Header.PrevBlock.String(),
+// 		Version:       block.Header.Version,
+// 		Nonce:         block.Header.Nonce,
+// 		Timestamp:     block.Header.Timestamp,
+// 		Bits:          block.Header.Bits,
+// 		MerkleRoot:    block.Header.MerkleRoot.String(),
+// 	}
+// 	if result := s.db.Create(bblock); result.Error != nil {
+// 		return result.Error
+// 	}
+
+// 	for i, tx := range block.Transactions {
+// 		if err := s.putTx(tx, bblock, uint32(i)); err != nil {
+// 			return err
+// 		}
+// 	}
+
+// 	aBlock := &model.Block{}
+// 	if resp := s.db.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
+// 		return resp.Error
+// 	}
+// 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
+
+// 	return nil
+// }
 
 func (s *storage) orphanBlock(block *model.Block) error {
 	block.IsOrphan = true
