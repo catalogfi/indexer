@@ -17,7 +17,7 @@ import (
 
 type Storage interface {
 	GetBlockLocator() (blockchain.BlockLocator, error)
-	PutBlock(block *wire.MsgBlock) error
+	PutBlock(block *wire.MsgBlock, token string) error
 	PutTx(tx *wire.MsgTx) error
 	Params() *chaincfg.Params
 }
@@ -27,7 +27,7 @@ type Peer struct {
 	storage Storage
 }
 
-func NewPeer(str Storage) (*Peer, error) {
+func NewPeer(str Storage, token string) (*Peer, error) {
 	done := make(chan struct{})
 
 	peerCfg := &peer.Config{
@@ -47,7 +47,7 @@ func NewPeer(str Storage) (*Peer, error) {
 			},
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 
-				if err := str.PutBlock(msg); err != nil {
+				if err := str.PutBlock(msg, token); err != nil {
 					fmt.Printf("error putting block (%s): %v\n", msg.BlockHash().String(), err)
 				}
 			},

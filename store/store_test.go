@@ -50,7 +50,7 @@ var _ = Describe("GetHeaderFromHeight", Serial, func() {
 			Transactions: []*wire.MsgTx{},
 		}
 
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 
 		header, err := s.GetHeaderFromHeight(h + 1)
 		Expect(err).To(BeNil())
@@ -100,7 +100,7 @@ var _ = Describe("GetHeaderFromHash", Serial, func() {
 			Transactions: []*wire.MsgTx{},
 		}
 
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 
 		// Expect(db.Create(block).Error).To(BeNil())
 		header, err := s.GetHeaderFromHash(block.Header.BlockHash().String())
@@ -143,7 +143,7 @@ var _ = Describe("GetBlockFromHash", Serial, func() {
 			Transactions: []*wire.MsgTx{},
 		}
 
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 
 		// Expect(db.Create(block).Error).To(BeNil())
 		btcblock1, err := s.GetBlockFromHash(block.Header.BlockHash().String())
@@ -192,7 +192,7 @@ var _ = Describe("GetBlockHash", Serial, func() {
 			Transactions: []*wire.MsgTx{},
 		}
 
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 		hash, err := s.GetBlockHash(h + 1)
 		Expect(err).To(BeNil())
 		Expect(hash).To(Equal(block.Header.BlockHash().String()))
@@ -272,7 +272,7 @@ var _ = Describe("PutBlock", Serial, func() {
 			Transactions: []*wire.MsgTx{},
 		}
 
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 
 		block1 := &model.Block{}
 		resp := db.First(block1, "height = ?", 0)
@@ -322,7 +322,7 @@ var _ = Describe("PutBlock", Serial, func() {
 			Transactions: []*wire.MsgTx{},
 		}
 
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 
 		nh, err := s.GetLatestBlockHeight()
 
@@ -377,7 +377,7 @@ var _ = Describe("PutBlock", Serial, func() {
 			Transactions: []*wire.MsgTx{},
 		}
 
-		err = s.PutBlock(block)
+		err = s.PutBlock(block,"bitcoin")
 		Expect(err).To(BeNil())
 
 		blockFromDB := &model.Block{}
@@ -456,7 +456,7 @@ var _ = Describe("GetBlockLocator", Serial, func() {
 			},
 			Transactions: []*wire.MsgTx{},
 		}
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 		//This creates a block in the database our idea is to check whether the last added block is same as the one we added
 		// Expect(db.Create(block).Error).To(BeNil())
 		locator, err := s.GetBlockLocator()
@@ -499,7 +499,7 @@ var _ = Describe("GetLatestBlockHeight", Serial, func() {
 			},
 			Transactions: []*wire.MsgTx{},
 		}
-		s.PutBlock(block)
+		s.PutBlock(block,"bitcoin")
 		newHeight, err := s.GetLatestBlockHeight()
 		Expect(err).To(BeNil())
 		Expect(newHeight).To(Equal(height + 1))

@@ -4,12 +4,16 @@ The Bitcoin Indexer is a powerful tool that indexes blockchain data and provides
 
 ## Table of Contents
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Contributing](#contributing)
-- [License](#license)
+- [Bitcoin Indexer with SQL Backend](#bitcoin-indexer-with-sql-backend)
+  - [Table of Contents](#table-of-contents)
+  - [Installation](#installation)
+  - [Usage](#usage)
+  - [Features](#features)
+  - [Architecture](#architecture)
+  - [Contributing](#contributing)
+  - [License](#license)
+    - [How to run](#how-to-run)
+- [Now for testing this :-](#now-for-testing-this--)
 
 ## Installation
 
@@ -110,3 +114,27 @@ Please ensure that your code adheres to the established coding style and include
 ## License
 
 This project is licensed under the [GNU GPLv3](LICENSE). Feel free to use and modify the code according to the terms specified in the license.
+
+
+### How to run
+For Bitcoin:-
+
+``` bitcoind -regtest -daemon ```
+
+Now inside the root folder indexer
+if gorm.db exists then remove it.
+``` rm gorm.db ```
+``` go run ./cmd/peer/peer.go -token=bitcoin ```
+
+# Now for testing this :-
+``` cp ../gorm.db . && c && ginkgo ```
+run this inside the store folder.
+- We Need to cp the gorm file again on each test case into store folder.
+
+
+For DogeCoin:- 
+``` bitcoin-cli stop ```
+``` dogecoind -regtest -daemon ```
+
+``` rm gorm.db ```
+``` go run ./cmd/peer/peer.go -token=dogecoin ```

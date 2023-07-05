@@ -181,14 +181,22 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 	return nil
 }
 
-func (s *storage) PutBlock(block *wire.MsgBlock) error {
+func (s *storage) PutBlock(block *wire.MsgBlock, token string) error {
 	height := int32(-1)
 	previousBlock := &model.Block{}
 	fmt.Println("block.Header.PrevBlock.String(): ", block.Header.PrevBlock.String())
 	fmt.Println("s.params.GenesisBlock.BlockHash().String(): ", s.params.GenesisBlock.BlockHash().String())
-	// DogeCoinGenesisBlockHash := "3d2160a3b5dc4a9d62e7e66a295f70313ac808440ef7400d6c0772171ce973a5"
+	DogeCoinGenesisBlockHash := "3d2160a3b5dc4a9d62e7e66a295f70313ac808440ef7400d6c0772171ce973a5"
 	// if block.Header.PrevBlock.String() == DogeCoinGenesisBlockHash {
-	if block.Header.PrevBlock.String() == s.params.GenesisBlock.BlockHash().String() {
+	BitCoinGenesisBlockHash := s.params.GenesisBlock.BlockHash().String()
+	BlockHash := ""
+	if token == "dogecoin" {
+		BlockHash = DogeCoinGenesisBlockHash
+	}
+	if token == "bitcoin" {
+		BlockHash = BitCoinGenesisBlockHash
+	}
+	if block.Header.PrevBlock.String() == BlockHash {
 		//this is triggered if first block is created in the blockchain
 		genesisBlock := btcutil.NewBlock(s.params.GenesisBlock)
 		genesisBlock.SetHeight(0)
