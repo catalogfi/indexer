@@ -16,7 +16,7 @@ func main() {
 	}
 	str := store.NewStorage(&chaincfg.RegressionNetParams, db)
 
-	p, err := peer.NewPeer(str)
+	p, err := peer.NewPeer("127.0.0.1:18444", str)
 	if err != nil {
 		panic(err)
 	}
