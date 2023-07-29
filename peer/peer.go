@@ -20,11 +20,13 @@ type Storage interface {
 }
 
 type Peer struct {
+	done    chan struct{}
 	peer    *peer.Peer
 	storage Storage
 }
 
 func NewPeer(url string, str Storage) (*Peer, error) {
+	done := make(chan struct{})
 	peerCfg := &peer.Config{
 		UserAgentName:    "peer",  // User agent name to advertise.
 		UserAgentVersion: "1.0.0", // User agent version to advertise.
@@ -38,7 +40,7 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 					sendMsg.AddInvVect(inv)
 					fmt.Println("got an inv", inv.Type.String())
 				}
-				p.QueueMessage(sendMsg, nil)
+				p.QueueMessage(sendMsg, done)
 			},
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 				if err := str.PutBlock(msg); err != nil {
@@ -68,6 +70,7 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 	p.AssociateConnection(conn)
 
 	return &Peer{
+		done:    done,
 		peer:    p,
 		storage: str,
 	}, nil
@@ -82,5 +85,6 @@ func (p *Peer) Run() error {
 		if err := p.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
 			return fmt.Errorf("PushGetBlocksMsg: error %v", err)
 		}
+		<-p.done
 	}
 }

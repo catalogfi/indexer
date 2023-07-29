@@ -236,10 +236,12 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	blockAtHeight := &model.Block{}
 	resp := s.db.First(&blockAtHeight, "height = ?", height)
 	if resp.Error != gorm.ErrRecordNotFound {
-		if resp.Error == nil {
-			return s.orphanBlock(blockAtHeight)
+		if resp.Error != nil {
+			return resp.Error
 		}
-		return resp.Error
+		if err := s.orphanBlock(blockAtHeight); err != nil {
+			return err
+		}
 	}
 
 	bblock := &model.Block{
@@ -266,7 +268,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 
 	aBlock := &model.Block{}
 	if resp := s.db.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
-		return resp.Error
+		return fmt.Errorf("failed to retrieve the stored block: %v", resp.Error)
 	}
 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
 
