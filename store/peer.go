@@ -94,7 +94,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		transaction.BlockID = block.ID
 		transaction.BlockIndex = blockIndex
 		transaction.BlockHash = block.Hash
-		transaction.Block = block
 		if result := s.db.Save(transaction); result.Error != nil {
 			return result.Error
 		}
@@ -125,7 +124,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			txInOut.Sequence = txIn.Sequence
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
-			txInOut.SpendingTx = transaction
 			if res := s.db.Save(&txInOut); res.Error != nil {
 				return res.Error
 			}
@@ -143,8 +141,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 
 			FundingTxHash:  txIn.PreviousOutPoint.Hash.String(),
 			FundingTxIndex: txIn.PreviousOutPoint.Index,
-
-			SpendingTx: transaction,
 		}); res.Error != nil {
 			return res.Error
 		}
@@ -171,8 +167,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			Value:          txOut.Value,
 			Spender:        spenderAddress,
 			Type:           pkScript.Class().String(),
-
-			FundingTx: transaction,
 		}); res.Error != nil {
 			return res.Error
 		}
@@ -287,7 +281,6 @@ func (s *storage) orphanBlock(block *model.Block) error {
 		tx.BlockID = 0
 		tx.BlockHash = ""
 		tx.BlockIndex = 0
-		tx.Block = nil
 		if resp := s.db.Save(&tx); resp.Error != nil {
 			return resp.Error
 		}

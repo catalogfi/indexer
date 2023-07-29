@@ -301,7 +301,7 @@ type Unspent struct {
 	Safe          bool    `json:"safe"`
 }
 
-func EncodeUnspent(op model.OutPoint, tip int32) Unspent {
+func EncodeUnspent(op model.OutPoint, confirmations uint32) Unspent {
 	return Unspent{
 		TxID:          op.FundingTxHash,
 		Vout:          op.FundingTxIndex,
@@ -310,6 +310,6 @@ func EncodeUnspent(op model.OutPoint, tip int32) Unspent {
 		Amount:        float64(op.Value) / float64(100000000),
 		ScriptPubKey:  op.PkScript,
 		WitnessScript: op.Witness,
-		Confirmations: uint32(tip-op.FundingTx.Block.Height) + 1,
+		Confirmations: confirmations,
 	}
 }

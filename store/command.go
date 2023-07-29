@@ -205,16 +205,21 @@ func (s *storage) GetTransaction(txHash string) (command.Transaction, error) {
 		return command.Transaction{}, err
 	}
 
-	if transaction.Block == nil {
+	if transaction.BlockHash == "" {
 		return command.Transaction{
 			Tx: tx,
 		}, nil
 	}
+	block, err := s.GetBlockFromHash(transaction.BlockHash)
+	if err != nil {
+		return command.Transaction{}, nil
+	}
+
 	return command.Transaction{
 		Tx:        tx,
 		BlockHash: transaction.BlockHash,
-		Height:    transaction.Block.Height,
-		BlockTime: transaction.Block.Timestamp.Unix(),
+		Height:    block.Height(),
+		BlockTime: block.MsgBlock().Header.Timestamp.Unix(),
 	}, nil
 }
 

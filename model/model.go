@@ -32,7 +32,6 @@ type Transaction struct {
 	BlockID    uint
 	BlockHash  string
 	BlockIndex uint32
-	Block      *Block `gorm:"foreignKey:BlockID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 }
 
 type OutPoint struct {
@@ -52,9 +51,6 @@ type OutPoint struct {
 	Value          int64
 	Spender        string
 	Type           string
-
-	SpendingTx *Transaction `gorm:"foreignKey:SpendingTxID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
-	FundingTx  *Transaction `gorm:"foreignKey:FundingTxID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 }
 
 func NewDB(dialector gorm.Dialector, opts ...gorm.Option) (*gorm.DB, error) {
