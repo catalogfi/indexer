@@ -5,8 +5,9 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/catalogfi/indexer/model"
-	"github.com/catalogfi/indexer/peer"
+	"github.com/catalogfi/indexer/rpc"
 	"github.com/catalogfi/indexer/store"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -29,9 +30,9 @@ func main() {
 		panic("invalid network")
 	}
 	str := store.NewStorage(params, db)
-	p, err := peer.NewPeer(os.Getenv("PEER_URL"), str)
-	if err != nil {
-		panic(err)
-	}
-	p.Run()
+	rpcserver := rpc.Default(str)
+
+	s := gin.Default()
+	s.POST("/", rpcserver.HandleJSONRPC)
+	s.Run(":8080")
 }
