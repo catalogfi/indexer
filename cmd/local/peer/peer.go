@@ -15,7 +15,7 @@ func main() {
 		panic(err)
 	}
 	str := store.NewStorage(&chaincfg.TestNet3Params, db)
-	p, err := peer.NewPeer("", str)
+	p, err := peer.NewPeer("44.203.96.119:18333", str)
 	if err != nil {
 		panic(err)
 	}

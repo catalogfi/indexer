@@ -15,7 +15,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	str := store.NewStorage(&chaincfg.RegressionNetParams, db)
+	str := store.NewStorage(&chaincfg.TestNet3Params, db)
 	rpcserver := rpc.Default(str)
 
 	s := gin.Default()

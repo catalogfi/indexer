@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/catalogfi/indexer/model"
 	"github.com/catalogfi/indexer/peer"
@@ -12,24 +10,24 @@ import (
 )
 
 func main() {
-	db, err := model.NewDB(postgres.Open(os.Getenv("PSQL_URL")), &gorm.Config{})
+	db, err := model.NewDB(postgres.Open("postgresql://postgres:QaTl5Rnp0tCIumYH@db.jqpfieqthwnqjxrdnfos.supabase.co:5432/postgres"), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
 
-	var params *chaincfg.Params
-	switch os.Getenv("NETWORK") {
-	case "mainnet":
-		params = &chaincfg.MainNetParams
-	case "testnet":
-		params = &chaincfg.TestNet3Params
-	case "regtest":
-		params = &chaincfg.RegressionNetParams
-	default:
-		panic("invalid network")
-	}
-	str := store.NewStorage(params, db)
-	p, err := peer.NewPeer(os.Getenv("PEER_URL"), str)
+	// var params *chaincfg.Params
+	// switch os.Getenv("NETWORK") {
+	// case "mainnet":
+	// 	params = &chaincfg.MainNetParams
+	// case "testnet":
+	// 	params = &chaincfg.TestNet3Params
+	// case "regtest":
+	// 	params = &chaincfg.RegressionNetParams
+	// default:
+	// 	panic("invalid network")
+	// }
+	str := store.NewStorage(&chaincfg.TestNet3Params, db)
+	p, err := peer.NewPeer("44.203.96.119:18333", str)
 	if err != nil {
 		panic(err)
 	}
