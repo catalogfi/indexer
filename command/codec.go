@@ -13,7 +13,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/catalogfi/indexer/model"
+	"github.com/catalogfi/indexer/mongodb/model"
 )
 
 // getblockheader

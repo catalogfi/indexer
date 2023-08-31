@@ -14,12 +14,13 @@ import (
 	"github.com/catalogfi/indexer/command"
 	"github.com/catalogfi/indexer/mongodb/model"
 	"go.mongodb.org/mongo-driver/bson"
-	"gorm.io/gorm"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func (s *storage) GetPreviousBlockHeight(blockhash string) (int32, error) {
 	block := model.Block{}
-	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{"hash", blockhash}}).Decode(&block); err != nil {
+	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{Key: "hash", Value: blockhash}}).Decode(&block); err != nil {
 		return 0, err
 	}
 	return block.Height, nil
@@ -27,19 +28,21 @@ func (s *storage) GetPreviousBlockHeight(blockhash string) (int32, error) {
 
 func (s *storage) GetLatestBlockHeight() (int32, error) {
 	block := model.Block{}
-
-	if resp := s.db.Order("height desc").First(block); resp.Error != nil {
-		if resp.Error == gorm.ErrRecordNotFound {
+	err := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{} , &options.FindOneOptions{
+		Sort: bson.D{{Key: "height", Value: -1}},
+	}).Decode(&block)
+	if err != nil {
+		if err == mongo.ErrNoDocuments{
 			return -1, nil
 		}
-		return -1, resp.Error
+		return -1, err
 	}
 	return block.Height, nil
 }
 
 func (s *storage) GetBlockHash(height int32) (string, error) {
 	block := model.Block{}
-	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{"height", height}}).Decode(&block); err != nil {
+	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{Key: "height", Value: height}}).Decode(&block); err != nil {
 		return "", err
 	}
 	return block.Hash, nil
@@ -49,8 +52,14 @@ func (s *storage) GetLatestBlockHash() (string, error) {
 	block := &model.Block{}
 	// s.db.Collection("blocks").InsertOne()
 
-	if resp := s.db.Order("height desc").First(block); resp.Error != nil {
-		return "", resp.Error
+	err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{} , &options.FindOneOptions{
+		Sort: bson.D{{Key: "height", Value: -1}},
+	}).Decode(&block)
+	if err != nil {
+		if err == mongo.ErrNoDocuments{
+			return "", nil
+		}
+		return "", err
 	}
 	return block.Hash, nil
 }
@@ -61,7 +70,7 @@ func (s *storage) GetBlockCount() (int32, error) {
 
 func (s *storage) GetBlockFromHash(blockhash string) (*btcutil.Block, error) {
 	block := model.Block{}
-	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{"hash", blockhash}}).Decode(&block); err != nil {
+	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{Key: "hash", Value: blockhash}}).Decode(&block); err != nil {
 		return nil, err
 	}
 
@@ -81,7 +90,7 @@ func (s *storage) GetBlockFromHash(blockhash string) (*btcutil.Block, error) {
 	msgBlock := wire.NewMsgBlock(blockHeader)
 
 	txs := model.Transactions{}
-	cursor, err := s.db.Collection("transactions").Find(context.TODO(), bson.D{{"block_hash", blockhash}})
+	cursor, err := s.db.Collection("transactions").Find(context.TODO(), bson.D{{Key: "block_hash", Value: blockhash}})
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +117,7 @@ func (s *storage) GetBlockFromHash(blockhash string) (*btcutil.Block, error) {
 
 func (s *storage) GetHeaderFromHash(blockhash string) (command.BlockHeader, error) {
 	block := model.Block{}
-	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{"hash", blockhash}}).Decode(&block); err != nil {
+	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{Key: "hash", Value: blockhash}}).Decode(&block); err != nil {
 		return command.BlockHeader{}, err
 	}
 
@@ -123,7 +132,7 @@ func (s *storage) GetHeaderFromHash(blockhash string) (command.BlockHeader, erro
 	blockHeader := wire.NewBlockHeader(block.Version, prevHash, merkleRootHash, block.Bits, block.Nonce)
 	blockHeader.Timestamp = time.Unix(block.Timestamp, 0)
 
-	result, err := s.db.Collection("transactions").CountDocuments(context.TODO(), bson.D{{"block_hash", blockhash}})
+	result, err := s.db.Collection("transactions").CountDocuments(context.TODO(), bson.D{{Key: "block_hash", Value: blockhash}})
 	if err != nil {
 		return command.BlockHeader{}, err
 	}
@@ -141,7 +150,7 @@ func (s *storage) GetHeaderFromHeight(height int32) (command.BlockHeader, error)
 	// }
 
 	block := model.Block{}
-	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{"height", height}}).Decode(&block); err != nil {
+	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{Key: "height", Value: height}}).Decode(&block); err != nil {
 		return command.BlockHeader{}, err
 	}
 
@@ -156,7 +165,7 @@ func (s *storage) GetHeaderFromHeight(height int32) (command.BlockHeader, error)
 	blockHeader := wire.NewBlockHeader(block.Version, prevHash, merkleRootHash, block.Bits, block.Nonce)
 	blockHeader.Timestamp = time.Unix(block.Timestamp, 0)
 
-	result, err := s.db.Collection("transactions").CountDocuments(context.TODO(), bson.D{{"block_hash", block.Hash}})
+	result, err := s.db.Collection("transactions").CountDocuments(context.TODO(), bson.D{{Key: "block_hash", Value: block.Hash}})
 	if err != nil {
 		return command.BlockHeader{}, err
 	}
@@ -170,7 +179,7 @@ func (s *storage) GetHeaderFromHeight(height int32) (command.BlockHeader, error)
 
 func (s *storage) addInputsAndOutputs(txHash string, tx *wire.MsgTx) error {
 	txIns := model.TxIns{}
-	cursor, err := s.db.Collection("outpoints").Find(context.TODO(), bson.D{{"spending_tx_hash", txHash}})
+	cursor, err := s.db.Collection("outpoints").Find(context.TODO(), bson.D{{Key: "spending_tx_hash", Value: txHash}})
 	if err != nil {
 		return err
 	}
@@ -204,7 +213,7 @@ func (s *storage) addInputsAndOutputs(txHash string, tx *wire.MsgTx) error {
 	}
 
 	txOuts := model.TxOuts{}
-	cursor, err = s.db.Collection("outpoints").Find(context.TODO(), bson.D{{"funding_tx_hash", txHash}})
+	cursor, err = s.db.Collection("outpoints").Find(context.TODO(), bson.D{{Key: "funding_tx_hash", Value: txHash}})
 	if err != nil {
 		return err
 	}
@@ -225,11 +234,11 @@ func (s *storage) addInputsAndOutputs(txHash string, tx *wire.MsgTx) error {
 
 func (s *storage) GetTransaction(txHash string) (command.Transaction, error) {
 	transaction := model.Transaction{}
-	if err := s.db.Collection("transactions").FindOne(context.TODO(), bson.D{{"hash", txHash}}).Decode(&transaction); err != nil {
+	if err := s.db.Collection("transactions").FindOne(context.TODO(), bson.D{{Key: "hash", Value: txHash}}).Decode(&transaction); err != nil {
 		return command.Transaction{}, err
 	}
 	block := model.Block{}
-	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{"hash", txHash}}).Decode(&block); err != nil {
+	if err := s.db.Collection("blocks").FindOne(context.TODO(), bson.D{{Key: "hash", Value: txHash}}).Decode(&block); err != nil {
 		return command.Transaction{}, err
 	}
 
@@ -254,13 +263,58 @@ func (s *storage) GetTransaction(txHash string) (command.Transaction, error) {
 }
 
 func (s *storage) ListUnspent(startBlock, endBlock int, addresses []string, includeUnsafe bool, options command.ListUnspentQueryOptions) ([]model.OutPoint, error) {
-	txOuts := model.TxOuts{}
+	outpoints := []model.OutPoint{}
+	collection := s.db.Collection("outpoints")
 
 	if !includeUnsafe {
+		resp, err := collection.Find(context.TODO(), bson.M{
+			"spender": bson.M{"$in": addresses},
+			"value": bson.M{
+				"$gte": options.MinimumAmount,
+				"$lte": options.MaximumAmount,
+			},
+			"fundingtx.block.height": bson.M{
+				"$gte": startBlock,
+				"$lte": endBlock,
+			},
+			"fundingtx.safe": true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Close(context.TODO())
 
-		resp := storage.db.Joins("FundingTx.Block", "height >= ? AND height <= ?", startBlock, endBlock).Joins("FundingTx", "safe = ?", true).Limit(int(options.MaximumCount)).Find(&outpoints, "spender IN ? AND value >= ? AND value <= ?", addresses, options.MinimumAmount, options.MaximumAmount)
-		return outpoints, resp.Error
+		for resp.Next(context.TODO()) {
+			var outpoint model.OutPoint
+			if err := resp.Decode(&outpoint); err != nil {
+				return nil, err
+			}
+			outpoints = append(outpoints, outpoint)
+		}
+	}	else {
+		resp, err := collection.Find(context.TODO(), bson.M{
+			"spender": bson.M{"$in": addresses},
+			"value": bson.M{
+				"$gte": options.MinimumAmount,
+				"$lte": options.MaximumAmount,
+			},
+			"fundingtx.block.height": bson.M{
+				"$gte": startBlock,
+				"$lte": endBlock,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Close(context.TODO())
+
+		for resp.Next(context.TODO()) {
+			var outpoint model.OutPoint
+			if err := resp.Decode(&outpoint); err != nil {
+				return nil, err
+			}
+			outpoints = append(outpoints, outpoint)
+		}
 	}
-	resp := storage.db.Joins("FundingTx.Block", "height >= ? AND height <= ?", startBlock, endBlock).Joins("FundingTx").Limit(int(options.MaximumCount)).Find(&outpoints, "spender IN ? AND value >= ? AND value <= ?", addresses, options.MinimumAmount, options.MaximumAmount)
-	return outpoints, resp.Error
+	return outpoints, nil
 }

@@ -9,7 +9,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/catalogfi/indexer/model"
+	"github.com/catalogfi/indexer/mongodb/model"
 )
 
 type Storage interface {

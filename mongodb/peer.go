@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/btcsuite/btcd/blockchain"
@@ -13,9 +14,10 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/catalogfi/indexer/model"
+	"github.com/catalogfi/indexer/mongodb/model"
 	"go.mongodb.org/mongo-driver/bson"
-	"gorm.io/gorm"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func (s *storage) GetBlockLocator() (blockchain.BlockLocator, error) {
@@ -91,23 +93,39 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		Version:  tx.Version,
 	}
 
-	fOCResult := s.db.FirstOrCreate(transaction, model.Transaction{Hash: transactionHash})
-	if fOCResult.Error != nil {
-		return fOCResult.Error
+	txCollection := s.db.Collection("transactions")
+
+	fOCResult , err := txCollection.UpdateOne(context.TODO(), bson.M{"hash": transactionHash} , bson.M{"$set": transaction} , options.Update().SetUpsert(true))
+	if err != nil {
+		return err
 	}
 
 	if block != nil {
-		transaction.BlockID = block.ID
+		blockID,err := strconv.ParseUint(block.ID.Hex(), 16, 64)
+		if err != nil {
+			return err
+		}
+		transaction.BlockID = uint(blockID) 
 		transaction.BlockIndex = blockIndex
 		transaction.BlockHash = block.Hash
-		if result := s.db.Save(transaction); result.Error != nil {
-			return result.Error
-		}
+
+		filter := bson.M{"hash": transactionHash}
+		update := bson.M{"$set": transaction}
+
+		_ , err = txCollection.UpdateOne(context.TODO(), filter, update)
+		if err != nil {
+			return err
+		} 
 	}
 
-	if fOCResult.RowsAffected == 0 {
+	if fOCResult.UpsertedCount == 0 {
 		// If the transaction already exists, we don't need to do anything else
 		return nil
+	}
+
+	txID , err := strconv.ParseUint(transaction.ID.Hex(), 16, 64)
+	if err != nil {
+		return err
 	}
 
 	for i, txIn := range tx.TxIn {
@@ -119,36 +137,44 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		witnessString := strings.Join(witness, ",")
 
 		txInOut := model.OutPoint{}
+
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
 			// Add SpendingTx to the outpoint
-			if result := s.db.First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
-				return result.Error
+			result := s.db.Collection("outpoints").FindOne(context.TODO(), bson.M{"funding_tx_hash": txIn.PreviousOutPoint.Hash.String(), "funding_tx_index": txIn.PreviousOutPoint.Index})
+			if result.Err() != nil {
+				return result.Err()	
 			}
-			txInOut.SpendingTxID = transaction.ID
+			err := result.Decode(&txInOut)
+			if err != nil {
+				return err
+			}
+			
+			txInOut.SpendingTxID = uint(txID) 
 			txInOut.SpendingTxHash = transactionHash
 			txInOut.SpendingTxIndex = inIndex
 			txInOut.Sequence = txIn.Sequence
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
-			if res := s.db.Save(&txInOut); res.Error != nil {
-				return res.Error
+			if res := s.db.Collection("outpoints").FindOneAndUpdate(context.TODO(), bson.M{"_id": txInOut.ID}, bson.M{"$set": txInOut}); res.Err() != nil {
+				return res.Err()
 			}
 			continue
 		}
 
 		// Create coinbase transactions
-		if res := s.db.Create(&model.OutPoint{
-			SpendingTxID:    transaction.ID,
-			SpendingTxHash:  transactionHash,
+		_ ,err = s.db.Collection("outpoints").InsertOne(context.TODO(),&model.OutPoint{
+			SpendingTxID:  uint(txID),
+			SpendingTxHash: transactionHash,
 			SpendingTxIndex: inIndex,
-			Sequence:        txIn.Sequence,
+			Sequence: txIn.Sequence,
 			SignatureScript: hex.EncodeToString(txIn.SignatureScript),
-			Witness:         witnessString,
+			Witness: witnessString,
 
 			FundingTxHash:  txIn.PreviousOutPoint.Hash.String(),
 			FundingTxIndex: txIn.PreviousOutPoint.Index,
-		}); res.Error != nil {
-			return res.Error
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -165,16 +191,17 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		}
 
 		// Create a new outpoint
-		if res := s.db.Create(&model.OutPoint{
-			FundingTxID:    transaction.ID,
+		_ ,err = s.db.Collection("outpoints").InsertOne(context.TODO(),&model.OutPoint{
+			FundingTxID:  uint(txID),
 			FundingTxHash:  transactionHash,
 			FundingTxIndex: uint32(i),
 			PkScript:       hex.EncodeToString(txOut.PkScript),
 			Value:          txOut.Value,
 			Spender:        spenderAddress,
 			Type:           pkScript.Class().String(),
-		}); res.Error != nil {
-			return res.Error
+		})
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -187,10 +214,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		genesisBlock := btcutil.NewBlock(s.params.GenesisBlock)
 		genesisBlock.SetHeight(0)
 
-		s.db.Collection("blocks").Ins
-
-
-		if result := s.db.Create(&model.Block{
+		_ , err := s.db.Collection("blocks").InsertOne(context.TODO(), &model.Block{
 			Hash:   genesisBlock.Hash().String(),
 			Height: 0,
 
@@ -198,39 +222,53 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			PreviousBlock: genesisBlock.MsgBlock().Header.PrevBlock.String(),
 			Version:       genesisBlock.MsgBlock().Header.Version,
 			Nonce:         genesisBlock.MsgBlock().Header.Nonce,
-			Timestamp:     genesisBlock.MsgBlock().Header.Timestamp,
+			Timestamp:     genesisBlock.MsgBlock().Header.Timestamp.Unix(),
 			Bits:          genesisBlock.MsgBlock().Header.Bits,
 			MerkleRoot:    genesisBlock.MsgBlock().Header.MerkleRoot.String(),
-		}); result.Error != nil {
-			return result.Error
+		})
+		if err != nil {
+			return err
 		}
 
-		// This is created for the coinbase transaction
-		resp := s.db.Create(&model.Transaction{
+		_, err = s.db.Collection("transactions").InsertOne(context.TODO(), &model.Transaction{
 			Hash: "0000000000000000000000000000000000000000000000000000000000000000",
 		})
-		if resp.Error != nil {
-			return resp.Error
+		if err != nil {
+			return err
 		}
 
 		height = 1
 	} else {
-		if resp := s.db.First(&previousBlock, "hash = ?", block.Header.PrevBlock.String()); resp.Error != nil {
-			return resp.Error
+		resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"hash": block.Header.PrevBlock.String()})
+		if resp.Err() != nil {
+			return resp.Err()
+		}
+
+		err := resp.Decode(&previousBlock)
+		if err != nil {
+			return err
 		}
 
 		if previousBlock.IsOrphan {
 			newlyOrphanedBlock := &model.Block{}
-			if resp := s.db.First(newlyOrphanedBlock, "height = ? AND is_orphan = ?", previousBlock.Height, false); resp.Error != nil {
-				return resp.Error
+			resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"height": previousBlock.Height, "is_orphan": false})
+			if resp.Err() != nil {
+				return resp.Err()
 			}
+
+			if err := resp.Decode(&newlyOrphanedBlock); err != nil {
+				return err
+			}
+
 			if err := s.orphanBlock(newlyOrphanedBlock); err != nil {
 				return err
 			}
 
 			previousBlock.IsOrphan = false
-			if resp := s.db.Save(&previousBlock); resp.Error != nil {
-				return resp.Error
+			
+			_, err = s.db.Collection("blocks").InsertOne(context.TODO(), previousBlock)
+			if err != nil {
+				return err
 			}
 		}
 
@@ -238,14 +276,14 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	}
 
 	blockAtHeight := &model.Block{}
-	resp := s.db.First(&blockAtHeight, "height = ?", height)
-	if resp.Error != gorm.ErrRecordNotFound {
-		if resp.Error != nil {
-			return resp.Error
-		}
-		if err := s.orphanBlock(blockAtHeight); err != nil {
-			return err
-		}
+
+	err := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"height": height}).Decode(&blockAtHeight)
+	if err != nil && err != mongo.ErrNoDocuments {
+		return err
+	}
+
+	if err := s.orphanBlock(blockAtHeight); err != nil {
+		return err
 	}
 
 	bblock := &model.Block{
@@ -256,12 +294,13 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		PreviousBlock: block.Header.PrevBlock.String(),
 		Version:       block.Header.Version,
 		Nonce:         block.Header.Nonce,
-		Timestamp:     block.Header.Timestamp,
+		Timestamp:     block.Header.Timestamp.Unix(),
 		Bits:          block.Header.Bits,
 		MerkleRoot:    block.Header.MerkleRoot.String(),
 	}
-	if result := s.db.Create(bblock); result.Error != nil {
-		return result.Error
+	_,err = s.db.Collection("blocks").InsertOne(context.TODO(), bblock)
+	if err != nil {
+		return err
 	}
 
 	for i, tx := range block.Transactions {
@@ -271,8 +310,10 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	}
 
 	aBlock := &model.Block{}
-	if resp := s.db.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
-		return fmt.Errorf("failed to retrieve the stored block: %v", resp.Error)
+
+	resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"hash": block.Header.BlockHash().String()})
+	if resp.Err() != nil {
+		return fmt.Errorf("failed to retrieve the stored block: %v", resp.Err())
 	}
 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
 
