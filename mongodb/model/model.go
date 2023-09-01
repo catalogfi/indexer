@@ -5,7 +5,7 @@ import (
 )
 
 type Block struct {
-	ID primitive.ObjectID `bson:"_id"`
+	ID primitive.ObjectID `bson:"_id,omitempty"`
 
 	Hash     string `bson:"hash"`
 	Height   int32
@@ -20,29 +20,29 @@ type Block struct {
 }
 
 type Transaction struct {
-	ID primitive.ObjectID `bson:"_id"`
+	ID primitive.ObjectID `bson:"_id,omitempty"`
 
 	Hash     string `bson:"hash"`
 	LockTime uint32
 	Version  int32
 	Safe     bool
 
-	BlockID    uint
+	BlockID    string
 	BlockHash  string
 	BlockIndex uint32
 }
 
 type OutPoint struct {
-	ID primitive.ObjectID `bson:"_id"`
+	ID primitive.ObjectID `bson:"_id,omitempty"`
 
-	SpendingTxID    uint
+	SpendingTxID    string
 	SpendingTxHash  string
 	SpendingTxIndex uint32
 	Sequence        uint32
 	SignatureScript string
 	Witness         string
 
-	FundingTxID    uint
+	FundingTxID    string
 	FundingTxHash  string
 	FundingTxIndex uint32
 	PkScript       string

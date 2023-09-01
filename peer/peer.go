@@ -43,8 +43,9 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 				p.QueueMessage(sendMsg, done)
 			},
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
+				fmt.Println("got a block")
 				if err := str.PutBlock(msg); err != nil {
-					fmt.Printf("error putting block (%s): %v\n", msg.BlockHash().String(), err)
+					fmt.Printf("error putting block +++ (%s): %v\n", msg.BlockHash().String(), err)
 				}
 			},
 			OnTx: func(p *peer.Peer, tx *wire.MsgTx) {

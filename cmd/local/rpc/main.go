@@ -1,21 +1,31 @@
 package main
 
 import (
+	"context"
+
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/catalogfi/indexer/model"
+	"github.com/catalogfi/indexer/mongodb"
 	"github.com/catalogfi/indexer/rpc"
-	"github.com/catalogfi/indexer/store"
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func main() {
-	db, err := model.NewDB(sqlite.Open("gorm.db"), &gorm.Config{})
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
 		panic(err)
 	}
-	str := store.NewStorage(&chaincfg.TestNet3Params, db)
+	defer client.Disconnect(context.TODO())
+
+	err = client.Ping(context.TODO(), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	mongo_db := client.Database("testdb")
+	str := mongodb.NewStorage(&chaincfg.TestNet3Params, mongo_db)
 	rpcserver := rpc.Default(str)
 
 	s := gin.Default()

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	"github.com/btcsuite/btcd/blockchain"
@@ -16,6 +15,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/catalogfi/indexer/mongodb/model"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -93,29 +93,42 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		Version:  tx.Version,
 	}
 
-	txCollection := s.db.Collection("transactions")
+	update := bson.M{
+		"$set": transaction,
+	}
 
-	fOCResult , err := txCollection.UpdateOne(context.TODO(), bson.M{"hash": transactionHash} , bson.M{"$set": transaction} , options.Update().SetUpsert(true))
+	txCollection := s.db.Collection("transactions")
+	// existingTransaction := &model.Transaction{}
+	// res := txCollection.FindOne(context.TODO(), bson.M{"hash": transactionHash}).Decode(existingTransaction)
+	// if res == nil {
+	// 	transaction.ID = existingTransaction.ID
+	// 	update = bson.M{
+	// 		"$set": transaction,
+	// 	}
+	// 	fmt.Println("")
+	// 	fmt.Println("update tx", update)
+	// 	fmt.Println("")
+	// } else if res != mongo.ErrNoDocuments {
+	// 	return fmt.Errorf("putting tx+error: %w , hash: %v", res, transactionHash)
+	// }
+
+	fOCResult, err := txCollection.UpdateOne(context.TODO(), bson.M{"hash": transactionHash}, update, options.Update().SetUpsert(true))
 	if err != nil {
-		return err
+		return fmt.Errorf("putting tx+error: %w , hash: %v", err, transactionHash)
 	}
 
 	if block != nil {
-		blockID,err := strconv.ParseUint(block.ID.Hex(), 16, 64)
-		if err != nil {
-			return err
-		}
-		transaction.BlockID = uint(blockID) 
+		transaction.BlockID = block.ID.Hex()
 		transaction.BlockIndex = blockIndex
 		transaction.BlockHash = block.Hash
 
 		filter := bson.M{"hash": transactionHash}
 		update := bson.M{"$set": transaction}
 
-		_ , err = txCollection.UpdateOne(context.TODO(), filter, update)
+		_, err = txCollection.UpdateOne(context.TODO(), filter, update)
 		if err != nil {
-			return err
-		} 
+			return fmt.Errorf("putting tx+2error: %w , filter: %v", err, filter)
+		}
 	}
 
 	if fOCResult.UpsertedCount == 0 {
@@ -123,10 +136,12 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		return nil
 	}
 
-	txID , err := strconv.ParseUint(transaction.ID.Hex(), 16, 64)
-	if err != nil {
-		return err
+	id, ok := fOCResult.UpsertedID.(primitive.ObjectID)
+	if !ok {
+		return fmt.Errorf("ERROR WHILE TYPECASTING")
 	}
+	txID := id.Hex()
+	fmt.Println("putting tx", txID)
 
 	for i, txIn := range tx.TxIn {
 		inIndex := uint32(i)
@@ -140,41 +155,42 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
 			// Add SpendingTx to the outpoint
-			result := s.db.Collection("outpoints").FindOne(context.TODO(), bson.M{"funding_tx_hash": txIn.PreviousOutPoint.Hash.String(), "funding_tx_index": txIn.PreviousOutPoint.Index})
+			result := s.db.Collection("outpoints").FindOne(context.TODO(), bson.M{"fundingtxhash": txIn.PreviousOutPoint.Hash.String(), "fundingtxindex": txIn.PreviousOutPoint.Index})
 			if result.Err() != nil {
-				return result.Err()	
+				return fmt.Errorf("putting tx+3error: %w , hash: %v", result.Err(), txIn.PreviousOutPoint.Hash.String())
 			}
 			err := result.Decode(&txInOut)
 			if err != nil {
-				return err
+				return fmt.Errorf("putting tx+4error: %w , hash: %v", err, txIn.PreviousOutPoint.Hash.String())
 			}
-			
-			txInOut.SpendingTxID = uint(txID) 
+
+			txInOut.SpendingTxID = txID
 			txInOut.SpendingTxHash = transactionHash
 			txInOut.SpendingTxIndex = inIndex
 			txInOut.Sequence = txIn.Sequence
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
 			if res := s.db.Collection("outpoints").FindOneAndUpdate(context.TODO(), bson.M{"_id": txInOut.ID}, bson.M{"$set": txInOut}); res.Err() != nil {
-				return res.Err()
+				return fmt.Errorf("putting tx+5error: %w , hash: %v", res.Err(), txIn.PreviousOutPoint.Hash.String())
 			}
 			continue
 		}
 
 		// Create coinbase transactions
-		_ ,err = s.db.Collection("outpoints").InsertOne(context.TODO(),&model.OutPoint{
-			SpendingTxID:  uint(txID),
-			SpendingTxHash: transactionHash,
+		_, err = s.db.Collection("outpoints").InsertOne(context.TODO(), &model.OutPoint{
+
+			SpendingTxID:    txID,
+			SpendingTxHash:  transactionHash,
 			SpendingTxIndex: inIndex,
-			Sequence: txIn.Sequence,
+			Sequence:        txIn.Sequence,
 			SignatureScript: hex.EncodeToString(txIn.SignatureScript),
-			Witness: witnessString,
+			Witness:         witnessString,
 
 			FundingTxHash:  txIn.PreviousOutPoint.Hash.String(),
 			FundingTxIndex: txIn.PreviousOutPoint.Index,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("putting tx+6error: %w , hash: %v", err, txIn.PreviousOutPoint.Hash.String())
 		}
 	}
 
@@ -185,14 +201,14 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		if err == nil {
 			addr, err := pkScript.Address(s.params)
 			if err != nil {
-				return err
+				return fmt.Errorf("putting tx+7error: %w , hash: %v", err, txOut.PkScript)
 			}
 			spenderAddress = addr.EncodeAddress()
 		}
 
 		// Create a new outpoint
-		_ ,err = s.db.Collection("outpoints").InsertOne(context.TODO(),&model.OutPoint{
-			FundingTxID:  uint(txID),
+		_, err = s.db.Collection("outpoints").InsertOne(context.TODO(), &model.OutPoint{
+			FundingTxID:    txID,
 			FundingTxHash:  transactionHash,
 			FundingTxIndex: uint32(i),
 			PkScript:       hex.EncodeToString(txOut.PkScript),
@@ -201,7 +217,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			Type:           pkScript.Class().String(),
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("putting tx+8error: %w , hash: %v", err, txOut.PkScript)
 		}
 	}
 	return nil
@@ -210,11 +226,12 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	height := int32(-1)
 	previousBlock := &model.Block{}
+	// fmt.Println("check 1")
 	if block.Header.PrevBlock.String() == s.params.GenesisBlock.BlockHash().String() {
 		genesisBlock := btcutil.NewBlock(s.params.GenesisBlock)
 		genesisBlock.SetHeight(0)
 
-		_ , err := s.db.Collection("blocks").InsertOne(context.TODO(), &model.Block{
+		_, err := s.db.Collection("blocks").InsertOne(context.TODO(), &model.Block{
 			Hash:   genesisBlock.Hash().String(),
 			Height: 0,
 
@@ -227,23 +244,24 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			MerkleRoot:    genesisBlock.MsgBlock().Header.MerkleRoot.String(),
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("InsertOne:+error %v", err)
 		}
-
+		// fmt.Println("TRUEEEEE")
 		_, err = s.db.Collection("transactions").InsertOne(context.TODO(), &model.Transaction{
 			Hash: "0000000000000000000000000000000000000000000000000000000000000000",
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("InsertOne:+1error %v", err)
 		}
 
 		height = 1
 	} else {
+		// fmt.Println("check 2", block.Header.PrevBlock.String(), block.Header.Timestamp.Unix())
 		resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"hash": block.Header.PrevBlock.String()})
 		if resp.Err() != nil {
-			return resp.Err()
+			return fmt.Errorf("failed++++retrieve the stored block: %v for hash %v", resp.Err(), block.Header.PrevBlock.String())
 		}
-
+		// panic("check 3")
 		err := resp.Decode(&previousBlock)
 		if err != nil {
 			return err
@@ -251,7 +269,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 
 		if previousBlock.IsOrphan {
 			newlyOrphanedBlock := &model.Block{}
-			resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"height": previousBlock.Height, "is_orphan": false})
+			resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"height": previousBlock.Height, "isorphan": false})
 			if resp.Err() != nil {
 				return resp.Err()
 			}
@@ -265,8 +283,8 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			}
 
 			previousBlock.IsOrphan = false
-			
-			_, err = s.db.Collection("blocks").InsertOne(context.TODO(), previousBlock)
+
+			_, err = s.db.Collection("blocks").UpdateByID(context.TODO(), previousBlock.ID, bson.M{"$set": previousBlock})
 			if err != nil {
 				return err
 			}
@@ -277,9 +295,10 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 
 	blockAtHeight := &model.Block{}
 
+	// fmt.Println("check 4" + strconv.Itoa(int(height)))
 	err := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"height": height}).Decode(&blockAtHeight)
 	if err != nil && err != mongo.ErrNoDocuments {
-		return err
+		return fmt.Errorf("failed ++ retrieve the stored block: %v", err)
 	}
 
 	if err := s.orphanBlock(blockAtHeight); err != nil {
@@ -298,22 +317,23 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		Bits:          block.Header.Bits,
 		MerkleRoot:    block.Header.MerkleRoot.String(),
 	}
-	_,err = s.db.Collection("blocks").InsertOne(context.TODO(), bblock)
+	_, err = s.db.Collection("blocks").InsertOne(context.TODO(), bblock)
 	if err != nil {
-		return err
+		return fmt.Errorf("InsertOne:+2error %v", err)
 	}
-
+	// fmt.Println("Block", bblock.Height, "has been added to the database", bblock)
+	fmt.Println("")
 	for i, tx := range block.Transactions {
 		if err := s.putTx(tx, bblock, uint32(i)); err != nil {
-			return err
+			return fmt.Errorf("InsertOne:+3error %v", err)
 		}
 	}
 
 	aBlock := &model.Block{}
 
-	resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"hash": block.Header.BlockHash().String()})
-	if resp.Err() != nil {
-		return fmt.Errorf("failed to retrieve the stored block: %v", resp.Err())
+	err = s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"hash": block.Header.BlockHash().String()}).Decode(&aBlock)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve the stored block+++: %v", err)
 	}
 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
 
