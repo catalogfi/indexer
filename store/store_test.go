@@ -52,7 +52,7 @@ var _ = Describe("Tests", Ordered, func() {
 			}
 
 			// println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			// println(h + 1)
 
 			block1 := &model.Block{}
@@ -107,7 +107,7 @@ var _ = Describe("Tests", Ordered, func() {
 			}
 
 			println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			println(h + 1)
 
 			nh, err := s.GetLatestBlockHeight()
@@ -164,7 +164,7 @@ var _ = Describe("Tests", Ordered, func() {
 			}
 
 			println(h)
-			err = s.PutBlock(block, "bitcoin")
+			err = s.PutBlock(block)
 			println(h + 1)
 			Expect(err).To(BeNil())
 
@@ -220,7 +220,7 @@ var _ = Describe("Tests", Ordered, func() {
 			// println(h)
 
 			println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			println(h + 1)
 
 			header, err := s.GetHeaderFromHeight(h + 1)
@@ -271,7 +271,7 @@ var _ = Describe("Tests", Ordered, func() {
 			}
 
 			println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			println(h + 1)
 
 			// Expect(db.Create(block).Error).To(BeNil())
@@ -320,7 +320,7 @@ var _ = Describe("Tests", Ordered, func() {
 			}
 
 			println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			println(h + 1)
 
 			// Expect(db.Create(block).Error).To(BeNil())
@@ -374,7 +374,7 @@ var _ = Describe("Tests", Ordered, func() {
 			}
 
 			println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			println(h + 1)
 			hash, err := s.GetBlockHash(h + 1)
 			Expect(err).To(BeNil())
@@ -507,7 +507,7 @@ var _ = Describe("Tests", Ordered, func() {
 				Transactions: []*wire.MsgTx{},
 			}
 			println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			println(h + 1)
 			//This creates a block in the database our idea is to check whether the last added block is same as the one we added
 			// Expect(db.Create(block).Error).To(BeNil())
@@ -556,7 +556,7 @@ var _ = Describe("Tests", Ordered, func() {
 				Transactions: []*wire.MsgTx{},
 			}
 			println(h)
-			s.PutBlock(block, "bitcoin")
+			s.PutBlock(block)
 			println(h + 1)
 			newHeight, err := s.GetLatestBlockHeight()
 			Expect(err).To(BeNil())

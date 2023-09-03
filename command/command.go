@@ -407,7 +407,11 @@ func (g *listUnspent) Query(str Storage, params []interface{}) (interface{}, err
 	unspents := []Unspent{}
 	sumAmount := int64(0)
 	for _, op := range outpoints {
-		unspents = append(unspents, EncodeUnspent(op, tip))
+		tx, err := str.GetTransaction(op.FundingTxHash)
+		if err != nil {
+			return nil, err
+		}
+		unspents = append(unspents, EncodeUnspent(op, uint32(tip-tx.Height)+1))
 		sumAmount += op.Value
 		if sumAmount >= queryOptions.MinimumSumAmount {
 			break

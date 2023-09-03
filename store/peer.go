@@ -95,7 +95,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		transaction.BlockID = block.ID
 		transaction.BlockIndex = blockIndex
 		transaction.BlockHash = block.Hash
-		transaction.Block = block
 		if result := s.db.Save(transaction); result.Error != nil {
 			return result.Error
 		}
@@ -126,7 +125,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			txInOut.Sequence = txIn.Sequence
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
-			txInOut.SpendingTx = transaction
 			if res := s.db.Save(&txInOut); res.Error != nil {
 				return res.Error
 			}
@@ -144,8 +142,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 
 			FundingTxHash:  txIn.PreviousOutPoint.Hash.String(),
 			FundingTxIndex: txIn.PreviousOutPoint.Index,
-
-			SpendingTx: transaction,
 		}); res.Error != nil {
 			return res.Error
 		}
@@ -172,8 +168,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			Value:          txOut.Value,
 			Spender:        spenderAddress,
 			Type:           pkScript.Class().String(),
-
-			FundingTx: transaction,
 		}); res.Error != nil {
 			return res.Error
 		}
@@ -181,21 +175,10 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 	return nil
 }
 
-func (s *storage) PutBlock(block *wire.MsgBlock, token string) error {
+func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	height := int32(-1)
 	previousBlock := &model.Block{}
-	fmt.Println("block.Header.PrevBlock.String(): ", block.Header.PrevBlock.String())
-	fmt.Println("s.params.GenesisBlock.BlockHash().String(): ", s.params.GenesisBlock.BlockHash().String())
-	DogeCoinGenesisBlockHash := "3d2160a3b5dc4a9d62e7e66a295f70313ac808440ef7400d6c0772171ce973a5"
-	// if block.Header.PrevBlock.String() == DogeCoinGenesisBlockHash {
-	BitCoinGenesisBlockHash := s.params.GenesisBlock.BlockHash().String()
-	BlockHash := ""
-	if token == "dogecoin" {
-		BlockHash = DogeCoinGenesisBlockHash
-	}
-	if token == "bitcoin" {
-		BlockHash = BitCoinGenesisBlockHash
-	}
+	BlockHash := s.params.GenesisBlock.BlockHash().String()
 	if block.Header.PrevBlock.String() == BlockHash {
 		//this is triggered if first block is created in the blockchain
 		genesisBlock := btcutil.NewBlock(s.params.GenesisBlock)
@@ -354,10 +337,12 @@ func (s *storage) PutBlock(block *wire.MsgBlock, token string) error {
 	// This part is actually to deal with the orphan blocks. If the previousBlock is not the last block, it is an orphan block.
 	resp := s.db.First(&blockAtHeight, "height = ? AND is_orphan = ?", height, false)
 	if resp.Error != gorm.ErrRecordNotFound {
-		if resp.Error == nil {
-			return s.orphanBlock(blockAtHeight)
+		if resp.Error != nil {
+			return resp.Error
 		}
-		return resp.Error
+		if err := s.orphanBlock(blockAtHeight); err != nil {
+			return err
+		}
 	}
 
 	bblock := &model.Block{
@@ -385,7 +370,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock, token string) error {
 
 	aBlock := &model.Block{}
 	if resp := s.db.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
-		return resp.Error
+		return fmt.Errorf("failed to retrieve the stored block: %v", resp.Error)
 	}
 	//this logs the output to the console
 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
@@ -504,7 +489,6 @@ func (s *storage) orphanBlock(block *model.Block) error {
 		tx.BlockID = 0
 		tx.BlockHash = ""
 		tx.BlockIndex = 0
-		tx.Block = nil
 		if resp := s.db.Save(&tx); resp.Error != nil {
 			return resp.Error
 		}
