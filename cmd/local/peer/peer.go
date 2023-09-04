@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/catalogfi/indexer/mongodb"
@@ -11,6 +12,7 @@ import (
 )
 
 func main() {
+
 	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
 	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
@@ -23,11 +25,19 @@ func main() {
 		panic(err)
 	}
 
-	mongo_db := client.Database("testdb")
+	mongo_db := client.Database("bitcoin_testnet")
 	str := mongodb.NewStorage(&chaincfg.TestNet3Params, mongo_db)
 	p, err := peer.NewPeer("44.203.96.119:18333", str)
+	fmt.Println("start")
+
+	// dogecoin config
+	// str := mongodb.NewStorage(&dogecoin.DogeCoinTestNet3Params, mongo_db)
+	// p, err := peer.NewPeer("testnets.chain.so:44556", str)
 	if err != nil {
 		panic(err)
 	}
 	p.Run()
 }
+
+// PEERS FOR TESTTING bitcoin testnet
+// https://pastebin.com/raw/jxkEpgEq

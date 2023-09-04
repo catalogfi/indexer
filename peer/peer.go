@@ -43,13 +43,15 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 				p.QueueMessage(sendMsg, done)
 			},
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
-				fmt.Println("got a block")
+				// fmt.Println("got a block", p.LastAnnouncedBlock())
+				fmt.Println("\n ### current block timeStamp: \n", time.Unix(msg.Header.Timestamp.Unix(), 0))
 				if err := str.PutBlock(msg); err != nil {
 					fmt.Printf("error putting block +++ (%s): %v\n", msg.BlockHash().String(), err)
 				}
 			},
 			OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
 				fmt.Println("got a tx")
+				fmt.Println("\n ### current tx timeStamp: \n", time.Unix(int64(tx.LockTime), 0))
 				if err := str.PutTx(tx); err != nil {
 					fmt.Printf("error putting tx (%s): %v\n", tx.TxHash().String(), err)
 				}
@@ -57,13 +59,13 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 		},
 		AllowSelfConns: true,
 	}
-
 	p, err := peer.NewOutboundPeer(peerCfg, url)
 	if err != nil {
 		return nil, fmt.Errorf("NewOutboundPeer: error %v", err)
 	}
 
 	// Establish the connection to the peer address and mark it connected.
+	fmt.Println("url", p.Addr())
 	conn, err := net.Dial("tcp", p.Addr())
 	if err != nil {
 		return nil, fmt.Errorf("net.Dial: error %v", err)

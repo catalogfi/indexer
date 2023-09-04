@@ -98,23 +98,10 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 	}
 
 	txCollection := s.db.Collection("transactions")
-	// existingTransaction := &model.Transaction{}
-	// res := txCollection.FindOne(context.TODO(), bson.M{"hash": transactionHash}).Decode(existingTransaction)
-	// if res == nil {
-	// 	transaction.ID = existingTransaction.ID
-	// 	update = bson.M{
-	// 		"$set": transaction,
-	// 	}
-	// 	fmt.Println("")
-	// 	fmt.Println("update tx", update)
-	// 	fmt.Println("")
-	// } else if res != mongo.ErrNoDocuments {
-	// 	return fmt.Errorf("putting tx+error: %w , hash: %v", res, transactionHash)
-	// }
 
 	fOCResult, err := txCollection.UpdateOne(context.TODO(), bson.M{"hash": transactionHash}, update, options.Update().SetUpsert(true))
 	if err != nil {
-		return fmt.Errorf("putting tx+error: %w , hash: %v", err, transactionHash)
+		return fmt.Errorf("error: %w , hash: %v", err, transactionHash)
 	}
 
 	if block != nil {
@@ -127,11 +114,11 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 
 		_, err = txCollection.UpdateOne(context.TODO(), filter, update)
 		if err != nil {
-			return fmt.Errorf("putting tx+2error: %w , filter: %v", err, filter)
+			return fmt.Errorf("error: %w , filter: %v", err, filter)
 		}
 	}
 
-	if fOCResult.UpsertedCount == 0 {
+	if fOCResult.ModifiedCount > 0 {
 		// If the transaction already exists, we don't need to do anything else
 		return nil
 	}
@@ -157,11 +144,12 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			// Add SpendingTx to the outpoint
 			result := s.db.Collection("outpoints").FindOne(context.TODO(), bson.M{"fundingtxhash": txIn.PreviousOutPoint.Hash.String(), "fundingtxindex": txIn.PreviousOutPoint.Index})
 			if result.Err() != nil {
-				return fmt.Errorf("putting tx+3error: %w , hash: %v", result.Err(), txIn.PreviousOutPoint.Hash.String())
+				// panic(fmt.Errorf("error %v at line %v", result.Err(), 149, txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index))
+				return fmt.Errorf("error: %w , hash: %v", result.Err(), txIn.PreviousOutPoint.Hash.String())
 			}
 			err := result.Decode(&txInOut)
 			if err != nil {
-				return fmt.Errorf("putting tx+4error: %w , hash: %v", err, txIn.PreviousOutPoint.Hash.String())
+				return fmt.Errorf("error: %w , hash: %v", err, txIn.PreviousOutPoint.Hash.String())
 			}
 
 			txInOut.SpendingTxID = txID
@@ -171,7 +159,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
 			if res := s.db.Collection("outpoints").FindOneAndUpdate(context.TODO(), bson.M{"_id": txInOut.ID}, bson.M{"$set": txInOut}); res.Err() != nil {
-				return fmt.Errorf("putting tx+5error: %w , hash: %v", res.Err(), txIn.PreviousOutPoint.Hash.String())
+				return fmt.Errorf("error: %w , hash: %v", res.Err(), txIn.PreviousOutPoint.Hash.String())
 			}
 			continue
 		}
@@ -190,7 +178,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			FundingTxIndex: txIn.PreviousOutPoint.Index,
 		})
 		if err != nil {
-			return fmt.Errorf("putting tx+6error: %w , hash: %v", err, txIn.PreviousOutPoint.Hash.String())
+			return fmt.Errorf("error: %w , hash: %v", err, txIn.PreviousOutPoint.Hash.String())
 		}
 	}
 
@@ -201,7 +189,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		if err == nil {
 			addr, err := pkScript.Address(s.params)
 			if err != nil {
-				return fmt.Errorf("putting tx+7error: %w , hash: %v", err, txOut.PkScript)
+				return fmt.Errorf("error: %w , hash: %v", err, txOut.PkScript)
 			}
 			spenderAddress = addr.EncodeAddress()
 		}
@@ -217,7 +205,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			Type:           pkScript.Class().String(),
 		})
 		if err != nil {
-			return fmt.Errorf("putting tx+8error: %w , hash: %v", err, txOut.PkScript)
+			return fmt.Errorf("error: %w , hash: %v", err, txOut.PkScript)
 		}
 	}
 	return nil
@@ -244,14 +232,14 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			MerkleRoot:    genesisBlock.MsgBlock().Header.MerkleRoot.String(),
 		})
 		if err != nil {
-			return fmt.Errorf("InsertOne:+error %v", err)
+			return fmt.Errorf("error %v", err)
 		}
 		// fmt.Println("TRUEEEEE")
 		_, err = s.db.Collection("transactions").InsertOne(context.TODO(), &model.Transaction{
 			Hash: "0000000000000000000000000000000000000000000000000000000000000000",
 		})
 		if err != nil {
-			return fmt.Errorf("InsertOne:+1error %v", err)
+			return fmt.Errorf("error %v", err)
 		}
 
 		height = 1
@@ -259,7 +247,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		// fmt.Println("check 2", block.Header.PrevBlock.String(), block.Header.Timestamp.Unix())
 		resp := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"hash": block.Header.PrevBlock.String()})
 		if resp.Err() != nil {
-			return fmt.Errorf("failed++++retrieve the stored block: %v for hash %v", resp.Err(), block.Header.PrevBlock.String())
+			return fmt.Errorf("failed to retrieve the stored block: %v for hash %v", resp.Err(), block.Header.PrevBlock.String())
 		}
 		// panic("check 3")
 		err := resp.Decode(&previousBlock)
@@ -273,7 +261,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			if resp.Err() != nil {
 				return resp.Err()
 			}
-
+			newlyOrphanedBlock.ID = primitive.NewObjectID()
 			if err := resp.Decode(&newlyOrphanedBlock); err != nil {
 				return err
 			}
@@ -283,7 +271,6 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			}
 
 			previousBlock.IsOrphan = false
-
 			_, err = s.db.Collection("blocks").UpdateByID(context.TODO(), previousBlock.ID, bson.M{"$set": previousBlock})
 			if err != nil {
 				return err
@@ -297,12 +284,17 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 
 	// fmt.Println("check 4" + strconv.Itoa(int(height)))
 	err := s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"height": height}).Decode(&blockAtHeight)
-	if err != nil && err != mongo.ErrNoDocuments {
-		return fmt.Errorf("failed ++ retrieve the stored block: %v", err)
-	}
-
-	if err := s.orphanBlock(blockAtHeight); err != nil {
-		return err
+	if err != mongo.ErrNoDocuments {
+		if err != nil {
+			// panic(fmt.Errorf("error %v line %v", err, 296))
+			return fmt.Errorf("failed to retrieve the stored block: %v", err)
+		} else {
+			if err := s.orphanBlock(blockAtHeight); err != nil {
+				// panic(fmt.Errorf("error %v line %v", err, 301))
+				return err
+			}
+		}
+		// return fmt.Errorf("failed ++ retrieve the stored block: %v", err)
 	}
 
 	bblock := &model.Block{
@@ -319,13 +311,13 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	}
 	_, err = s.db.Collection("blocks").InsertOne(context.TODO(), bblock)
 	if err != nil {
-		return fmt.Errorf("InsertOne:+2error %v", err)
+		return fmt.Errorf("InsertOne error: %v", err)
 	}
 	// fmt.Println("Block", bblock.Height, "has been added to the database", bblock)
 	fmt.Println("")
 	for i, tx := range block.Transactions {
 		if err := s.putTx(tx, bblock, uint32(i)); err != nil {
-			return fmt.Errorf("InsertOne:+3error %v", err)
+			return fmt.Errorf("InsertOne error: %v", err)
 		}
 	}
 
@@ -333,7 +325,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 
 	err = s.db.Collection("blocks").FindOne(context.TODO(), bson.M{"hash": block.Header.BlockHash().String()}).Decode(&aBlock)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve the stored block+++: %v", err)
+		return fmt.Errorf("failed to retrieve the stored block: %v", err)
 	}
 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
 
@@ -354,7 +346,7 @@ func (s *storage) orphanBlock(block *model.Block) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Collection("blocks").UpdateOne(context.Background(), bson.D{{"hash", block.Hash}}, bson.M{"$set": block})
+	_, err = s.db.Collection("blocks").UpdateOne(context.Background(), bson.D{{Key: "_id", Value: block.ID}}, bson.M{"$set": block}, options.Update().SetUpsert(true))
 	if err != nil {
 		return err
 	}
