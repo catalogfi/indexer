@@ -1,6 +1,6 @@
-# Bitcoin Indexer with SQL Backend
+# Indexer
 
-The Bitcoin Indexer is a powerful tool that indexes blockchain data and provides efficient querying capabilities for exploring and analyzing Bitcoin transactions and addresses. This project utilizes a SQL backend for the database and leverages the Gorm library to connect with various backends. It exposes the same RPC methods as the original Bitcoin node, making it compatible with existing Bitcoin applications. 
+Indexer is a tool that indexes blockchain data and provides efficient querying capabilities for Bitcoin-like blockchains. It exposes the same RPC methods as the original Bitcoin node, making it compatible with existing Bitcoin applications.
 
 ## Table of Contents
 
@@ -94,6 +94,11 @@ indexer
 ```
 
 The modular architecture allows for separate development and testing of different components. It promotes code reusability and maintainability, enabling easy addition of new RPC methods, efficient syncing with other Bitcoin nodes, and scalable handling of RPC requests.
+
+## Pending Tasks
+
+- [ ] Replacae SQL usage with MongoDB for improved syncing and querying speeds.
+- [ ] Add support for other Bitcoin-like chains such as Dogecoin.
 
 ## Contributing
 
