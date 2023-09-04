@@ -97,8 +97,8 @@ The modular architecture allows for separate development and testing of differen
 
 ## Pending Tasks
 
-- [ ] Replacae SQL usage with MongoDB for improved syncing and querying speeds.
-- [ ] Add support for other Bitcoin-like chains such as Dogecoin.
+- [ ] Replace SQL usage with MongoDB for improved syncing and querying speeds ([feat/mongodb-migrate](https://github.com/catalogfi/indexer/tree/feat/mongodb-migrate)).
+- [ ] Add support for other Bitcoin-like chains such as Dogecoin ([feat/dogecoin](https://github.com/catalogfi/indexer/tree/feat/dogecoin)).
 
 ## Contributing
 
