@@ -36,31 +36,36 @@ type Options struct {
 	RPCPort     string `json:"rpcport"`
 }
 
-func getBlockFromRPC(height int) (*walletrpc.CompactBlock, error) {
+func GetBlockFromRPC(height int) (*walletrpc.CompactBlock, error) {
 	var err error
 	var opts Options
 	var rpcClient *rpcclient.Client
 	opts = Options{
 		RPCUser:     "",
 		RPCPassword: "",
-		RPCHost:     "",
+		RPCHost:     "aws-eu-central-1.json-rpc.cryptoapis.io/nodes/shared/zcash/testnet",
 		RPCPort:     "",
 	}
-	if opts.RPCUser != "" && opts.RPCPassword != "" && opts.RPCHost != "" && opts.RPCPort != "" {
-		connCfg := &rpcclient.ConnConfig{
-			Host:         net.JoinHostPort(opts.RPCHost, opts.RPCPort),
-			User:         opts.RPCUser,
-			Pass:         opts.RPCPassword,
-			HTTPPostMode: true, // Zcash only supports HTTP POST mode
-			DisableTLS:   true, // Zcash does not provide TLS by default
-		}
-		rpcClient, err = rpcclient.New(connCfg, nil)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		panic("rpcClient is nil")
+	// https://aws-eu-central-1.json-rpc.cryptoapis.io/nodes/shared/bitcoin/mainnet
+	connCfg := &rpcclient.ConnConfig{
+		Host: net.JoinHostPort(opts.RPCHost, opts.RPCPort),
+		User: opts.RPCUser,
+		Pass: opts.RPCPassword,
+		ExtraHeaders: map[string]string{
+			"Content-Type": "application/json",
+			"X-API-Key":    "0612288f52b62fd1a8a9e03368a1213f29c4e761",
+		},
+		HTTPPostMode: true, // Zcash only supports HTTP POST mode
+		DisableTLS:   true, // Zcash does not provide TLS by default
 	}
+	rpcClient, err = rpcclient.New(connCfg, nil)
+	if err != nil {
+		return nil, err
+	}
+	// if opts.RPCUser != "" && opts.RPCPassword != "" && opts.RPCHost != "" && opts.RPCPort != "" {
+	// } else {
+	// 	panic("rpcClient is nil")
+	// }
 
 	// `block.ParseFromSlice` correctly parses blocks containing v5
 	// transactions, but incorrectly computes the IDs of the v5 transactions.
