@@ -3,24 +3,34 @@ package zcash
 import "go.mongodb.org/mongo-driver/bson/primitive"
 
 type Block struct {
+	// mongodb ID
 	ID primitive.ObjectID `bson:"_id,omitempty"`
 
+	// blockhash
 	Hash     string `bson:"hash"`
 	Height   int32
 	IsOrphan bool
 
-	PreviousBlock    string
-	Version          int32
-	Nonce            uint32
-	Timestamp        int64
-	Bits             uint32
-	MerkleRoot       string
-	Transactions     []Transaction
+	// prevBlock Hash
+	PreviousBlock string
+	Version       int32
+	Nonce         uint32
+	Timestamp     int64
+	Bits          uint32
+	MerkleRoot    string
+	Transactions  []Transaction
+
+	// miner difficulty
 	DifficultyTarget uint32
-	MagicNumber      uint32
-	BlockSize        uint32
+
+	//The MagicNumber is typically a fixed value that is agreed upon
+	//by the network participants or defined by the protocol. It is used to
+	// indicate the beginning of a block and helps to ensure that the block is
+	// being interpreted correctly by the network nodes.
+	MagicNumber uint32
+	BlockSize   uint32
+	// final Merkle root of the Sapling note commitment tree
 	FinalSaplingRoot string
-	BlockSolutions   string
 }
 
 type Transaction struct {
@@ -72,25 +82,36 @@ type Output struct {
 type OutputDescription struct {
 	ID primitive.ObjectID `bson:"_id,omitempty"`
 
-	CV            string
-	CMU           string
-	EphemeralKey  string
+	// Pedersen commitment to the value of the output
+	CV string
+	// Merkle root of the commitment tree that includes the CV values
+	CMU string
+	// https://zips.z.cash/zip-0212
+	EphemeralKey string
+	// ciphertext that represents the encrypted output value.
 	EncCiphertext string
+	// ciphertext that represents the encrypted output address or script
 	OutCiphertext string
-	ZKProof       string
+	// proof
+	ZKProof string
 }
 
 type SpendDescription struct {
 	ID primitive.ObjectID `bson:"_id,omitempty"`
 
-	CV           string
-	Anchor       string
-	Nullifier    string
-	RK           string
-	ZKProof      string
+	// Pedersen commitment to the value of the output
+	CV string
+	// value that is used to prove that a specific shielded output has been spent.
+	Nullifier string
+	// used to get ephemeral key
+	ReceivingKey string
+	// proof
+	ZKProof string
+
 	SpendAuthSig string
 }
 
+// joinsplit is when a transaction is made via sheilded addresses
 type JoinSplit struct {
 	ID primitive.ObjectID `bson:"_id,omitempty"`
 
@@ -100,7 +121,9 @@ type JoinSplit struct {
 	Nullifiers   []string
 	Commitments  []string
 	EphemeralKey string
-	RandomSeed   string
-	VMacs        []string
-	ZKProof      string
+
+	RandomSeed string
+	//Variable-Length Message Authentication Code
+	VMacs   []string
+	ZKProof string
 }
