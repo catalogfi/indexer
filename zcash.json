@@ -1,0 +1,215 @@
+{
+  "Name": "testnet3",
+  "Net": 3220773626,
+  "DefaultPort": "18333",
+  "DNSSeeds": [],
+  "GenesisBlock": {
+    "Header": {
+      "Version": 1,
+      "PrevBlock": [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      "MerkleRoot": [
+        196, 234, 165, 136, 121, 8, 29, 227, 194, 74, 123, 17, 126, 210, 178,
+        131, 0, 231, 236, 76, 76, 29, 255, 29, 63, 18, 104, 183, 133, 122, 77,
+        219
+      ],
+      "Timestamp": "2011-02-03T04:46:42+05:30",
+      "Bits": 486604799,
+      "Nonce": 414098458
+    },
+    "Transactions": [
+      {
+        "Version": 1,
+        "TxIn": [
+          {
+            "PreviousOutPoint": {
+              "Hash": [
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+              ],
+              "Index": 4294967295
+            },
+            "SignatureScript": "BP//AB0BBEVUaGUgVGltZXMgMDMvSmFuLzIwMDkgQ2hhbmNlbGxvciBvbiBicmluayBvZiBzZWNvbmQgYmFpbG91dCBmb3IgYmFua3M=",
+            "Witness": null,
+            "Sequence": 4294967295
+          }
+        ],
+        "TxOut": [
+          {
+            "Value": 5000000000,
+            "PkScript": "QQRniv2w/lVIJxln8aZxMLcQXNaoKOA5CaZ5YuDqH2Hetkn2vD9M7zjE81UE5R7BEt5cOE33uguNV4pMcCtr8R1frA=="
+          }
+        ],
+        "LockTime": 0
+      }
+    ]
+  },
+  "GenesisHash": [
+    67, 73, 127, 215, 248, 38, 149, 113, 8, 244, 163, 15, 217, 206, 195, 174,
+    186, 121, 151, 32, 132, 233, 14, 173, 1, 234, 51, 9, 0, 0, 0, 0
+  ],
+  "PowLimit": 26959946667150639794667015087019630673637144422540572481103610249215,
+  "PowLimitBits": 486604799,
+  "BIP0034Height": 21111,
+  "BIP0065Height": 581885,
+  "BIP0066Height": 330776,
+  "CoinbaseMaturity": 100,
+  "SubsidyReductionInterval": 210000,
+  "TargetTimespan": 1209600000000000,
+  "TargetTimePerBlock": 600000000000,
+  "RetargetAdjustmentFactor": 4,
+  "ReduceMinDifficulty": true,
+  "MinDiffReductionTime": 1200000000000,
+  "GenerateSupported": false,
+  "Checkpoints": [
+    {
+      "Height": 546,
+      "Hash": [
+        112, 203, 106, 247, 235, 188, 177, 49, 93, 52, 20, 2, 156, 85, 108, 85,
+        243, 226, 252, 53, 60, 76, 144, 99, 167, 108, 147, 42, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 100000,
+      "Hash": [
+        30, 10, 22, 187, 173, 204, 222, 29, 128, 198, 101, 151, 177, 147, 158,
+        69, 249, 27, 87, 13, 41, 249, 95, 193, 88, 41, 158, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 200000,
+      "Hash": [
+        242, 166, 58, 173, 233, 191, 226, 212, 47, 139, 215, 225, 116, 226, 235,
+        83, 183, 234, 95, 240, 62, 150, 33, 211, 255, 123, 40, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 300001,
+      "Hash": [
+        244, 171, 87, 255, 138, 84, 28, 87, 127, 109, 94, 37, 190, 136, 60, 137,
+        207, 143, 188, 209, 243, 72, 71, 71, 41, 72, 0, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 400002,
+      "Hash": [
+        137, 160, 245, 1, 117, 186, 138, 82, 83, 43, 23, 215, 186, 78, 97, 116,
+        130, 46, 188, 45, 174, 130, 203, 142, 59, 199, 226, 5, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 500011,
+      "Hash": [
+        2, 11, 117, 7, 123, 143, 132, 242, 150, 238, 1, 84, 113, 231, 217, 155,
+        10, 87, 255, 146, 172, 251, 119, 57, 246, 41, 9, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 600002,
+      "Hash": [
+        64, 114, 176, 52, 240, 67, 36, 64, 255, 139, 142, 193, 173, 68, 204, 92,
+        206, 202, 77, 233, 110, 253, 154, 56, 113, 244, 1, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 700000,
+      "Hash": [
+        193, 77, 63, 106, 30, 124, 125, 102, 253, 148, 9, 81, 228, 79, 60, 59,
+        225, 39, 59, 234, 77, 42, 177, 120, 97, 64, 0, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 800010,
+      "Hash": [
+        193, 180, 253, 59, 64, 250, 131, 89, 63, 212, 49, 6, 216, 87, 230, 1,
+        219, 41, 104, 11, 25, 51, 100, 41, 53, 237, 23, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 900000,
+      "Hash": [
+        155, 216, 172, 65, 139, 238, 177, 162, 207, 93, 104, 200, 181, 198, 235,
+        170, 148, 122, 91, 118, 110, 85, 36, 137, 141, 111, 53, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 1000007,
+      "Hash": [
+        223, 45, 97, 154, 55, 80, 188, 187, 97, 66, 18, 80, 95, 94, 149, 206,
+        115, 209, 10, 183, 37, 31, 138, 61, 137, 203, 28, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 1100007,
+      "Hash": [
+        232, 209, 109, 214, 66, 111, 121, 214, 110, 148, 209, 24, 168, 38, 115,
+        133, 32, 238, 61, 171, 104, 135, 209, 44, 123, 188, 10, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 1200007,
+      "Hash": [
+        234, 108, 123, 58, 113, 86, 126, 63, 150, 140, 237, 20, 23, 25, 4, 126,
+        181, 157, 144, 113, 87, 132, 65, 220, 242, 4, 0, 0, 0, 0, 0, 0
+      ]
+    },
+    {
+      "Height": 1300007,
+      "Hash": [
+        250, 217, 219, 177, 27, 191, 147, 66, 24, 120, 117, 247, 68, 91, 57,
+        176, 38, 43, 5, 124, 16, 117, 223, 84, 157, 182, 234, 114, 0, 0, 0, 0
+      ]
+    }
+  ],
+  "RuleChangeActivationThreshold": 1512,
+  "MinerConfirmationWindow": 2016,
+  "Deployments": [
+    {
+      "BitNumber": 28,
+      "MinActivationHeight": 0,
+      "CustomActivationThreshold": 0,
+      "DeploymentStarter": {},
+      "DeploymentEnder": {}
+    },
+    {
+      "BitNumber": 22,
+      "MinActivationHeight": 100000,
+      "CustomActivationThreshold": 1815,
+      "DeploymentStarter": {},
+      "DeploymentEnder": {}
+    },
+    {
+      "BitNumber": 0,
+      "MinActivationHeight": 0,
+      "CustomActivationThreshold": 0,
+      "DeploymentStarter": {},
+      "DeploymentEnder": {}
+    },
+    {
+      "BitNumber": 1,
+      "MinActivationHeight": 0,
+      "CustomActivationThreshold": 0,
+      "DeploymentStarter": {},
+      "DeploymentEnder": {}
+    },
+    {
+      "BitNumber": 2,
+      "MinActivationHeight": 0,
+      "CustomActivationThreshold": 1512,
+      "DeploymentStarter": {},
+      "DeploymentEnder": {}
+    }
+  ],
+  "RelayNonStdTxs": true,
+  "Bech32HRPSegwit": "tb",
+  "PubKeyHashAddrID": 111,
+  "ScriptHashAddrID": 196,
+  "PrivateKeyID": 239,
+  "WitnessPubKeyHashAddrID": 3,
+  "WitnessScriptHashAddrID": 40,
+  "HDPrivateKeyID": [4, 53, 131, 148],
+  "HDPublicKeyID": [4, 53, 135, 207],
+  "HDCoinType": 1
+}

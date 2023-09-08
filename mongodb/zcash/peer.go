@@ -36,25 +36,28 @@ type Options struct {
 	RPCPort     string `json:"rpcport"`
 }
 
+func PrintPrettyJSON(v interface{}) {
+	b, err := json.MarshalIndent(v, "", "	")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(b))
+}
 func GetBlockFromRPC(height int) (*walletrpc.CompactBlock, error) {
 	var err error
 	var opts Options
 	var rpcClient *rpcclient.Client
 	opts = Options{
-		RPCUser:     "",
-		RPCPassword: "",
-		RPCHost:     "aws-eu-central-1.json-rpc.cryptoapis.io/nodes/shared/zcash/testnet",
-		RPCPort:     "",
+		RPCUser:     "qwertyuiop",
+		RPCPassword: "qwertyuiop",
+		RPCHost:     "127.0.0.1",
+		RPCPort:     "8232",
 	}
 	// https://aws-eu-central-1.json-rpc.cryptoapis.io/nodes/shared/bitcoin/mainnet
 	connCfg := &rpcclient.ConnConfig{
-		Host: net.JoinHostPort(opts.RPCHost, opts.RPCPort),
-		User: opts.RPCUser,
-		Pass: opts.RPCPassword,
-		ExtraHeaders: map[string]string{
-			"Content-Type": "application/json",
-			"X-API-Key":    "0612288f52b62fd1a8a9e03368a1213f29c4e761",
-		},
+		Host:         net.JoinHostPort(opts.RPCHost, opts.RPCPort),
+		User:         opts.RPCUser,
+		Pass:         opts.RPCPassword,
 		HTTPPostMode: true, // Zcash only supports HTTP POST mode
 		DisableTLS:   true, // Zcash does not provide TLS by default
 	}
@@ -119,7 +122,8 @@ func GetBlockFromRPC(height int) (*walletrpc.CompactBlock, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "error reading JSON response")
 	}
-
+	fmt.Println("BLOCK HEIGHT ", height)
+	fmt.Println("block data hex ", blockDataHex)
 	blockData, err := hex.DecodeString(blockDataHex)
 	if err != nil {
 		return nil, errors.Wrap(err, "error decoding getblock output")
@@ -130,6 +134,7 @@ func GetBlockFromRPC(height int) (*walletrpc.CompactBlock, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "error parsing block")
 	}
+	fmt.Println("GetBlockFromRPC")
 	if len(rest) != 0 {
 		return nil, errors.New("received overlong message")
 	}
@@ -144,6 +149,7 @@ func GetBlockFromRPC(height int) (*walletrpc.CompactBlock, error) {
 		// convert from big-endian
 		t.SetTxID(parser.Reverse(txid))
 	}
+	PrintPrettyJSON(block.Transactions())
 	r := block.ToCompact()
 	r.ChainMetadata.SaplingCommitmentTreeSize = block1.Trees.Sapling.Size
 	r.ChainMetadata.OrchardCommitmentTreeSize = block1.Trees.Orchard.Size
