@@ -16,6 +16,7 @@ type Storage interface {
 	GetBlockLocator() (blockchain.BlockLocator, error)
 	PutBlock(block *wire.MsgBlock) error
 	PutTx(tx *wire.MsgTx) error
+	GetLatestBlockHeight() (int32, error)
 	Params() *chaincfg.Params
 }
 
@@ -42,13 +43,23 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 				}
 				p.QueueMessage(sendMsg, done)
 			},
+
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 				if err := str.PutBlock(msg); err != nil {
 					fmt.Printf("error putting block (%s): %v\n", msg.BlockHash().String(), err)
 				}
 			},
 			OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
-				fmt.Println("got a tx")
+				latestBlock, err := str.GetLatestBlockHeight()
+				if err != nil {
+					fmt.Printf("error getting latest block height: %v\n", err)
+					return
+				}
+				latestBlockFromPeer := p.LastBlock()
+				if latestBlockFromPeer > latestBlock {
+					fmt.Printf("peer is ahead of us (%d > %d)\n", latestBlockFromPeer, latestBlock)
+					return
+				}
 				if err := str.PutTx(tx); err != nil {
 					fmt.Printf("error putting tx (%s): %v\n", tx.TxHash().String(), err)
 				}
