@@ -39,9 +39,9 @@ func (s *storage) GetBlockLocator() (blockchain.BlockLocator, error) {
 	}
 
 	// Reverse the list
-	// for i, j := 0, len(hashes)-1; i < j; i, j = i+1, j-1 {
-	// 	hashes[i], hashes[j] = hashes[j], hashes[i]
-	// }
+	for i, j := 0, len(hashes)-1; i < j; i, j = i+1, j-1 {
+		hashes[i], hashes[j] = hashes[j], hashes[i]
+	}
 
 	return hashes, nil
 }
