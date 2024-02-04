@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcutil"
@@ -249,6 +250,8 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	}
 
 	blockAtHeight := &model.Block{}
+	// time taken to find the block at the height
+	timeNow := time.Now()
 	resp := s.db.First(&blockAtHeight, "height = ?", height)
 	if resp.Error != gorm.ErrRecordNotFound {
 		if resp.Error != nil {
@@ -258,7 +261,8 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			return err
 		}
 	}
-
+	fmt.Println("Time taken to find the block at the height", time.Since(timeNow).Milliseconds(), "milliseconds")
+	timeNow = time.Now()
 	bblock := &model.Block{
 		Hash:   block.Header.BlockHash().String(),
 		Height: height,
@@ -274,17 +278,20 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	if result := s.db.Create(bblock); result.Error != nil {
 		return result.Error
 	}
-
+	fmt.Println("Time taken to create the block", time.Since(timeNow).Milliseconds(), "milliseconds")
+	timeNow = time.Now()
 	for i, tx := range block.Transactions {
 		if err := s.putTx(tx, bblock, uint32(i)); err != nil {
 			return err
 		}
 	}
-
+	fmt.Println("Time taken to put the transactions", time.Since(timeNow).Milliseconds(), "milliseconds")
+	timeNow = time.Now()
 	aBlock := &model.Block{}
 	if resp := s.db.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
 		return fmt.Errorf("failed to retrieve the stored block: %v", resp.Error)
 	}
+	fmt.Println("Time taken to retrieve the stored block", time.Since(timeNow).Milliseconds(), "milliseconds")
 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
 
 	return nil
