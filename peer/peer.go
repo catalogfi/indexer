@@ -35,6 +35,12 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 		Services:         wire.SFNodeWitness,
 		TrickleInterval:  time.Second * 10,
 		Listeners: peer.MessageListeners{
+			OnAlert: func(p *peer.Peer, msg *wire.MsgAlert) {
+				fmt.Printf("alert message: %v\n", msg.Payload)
+			},
+			OnReject: func(p *peer.Peer, msg *wire.MsgReject) {
+				fmt.Printf("reject message: %s\n", msg)
+			},
 			OnInv: func(p *peer.Peer, msg *wire.MsgInv) {
 				sendMsg := wire.NewMsgGetData()
 				for _, inv := range msg.InvList {
