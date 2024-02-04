@@ -102,6 +102,15 @@ func (p *Peer) Run() error {
 		if err := p.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
 			return fmt.Errorf("PushGetBlocksMsg: error %v", err)
 		}
-		<-p.done
+		for {
+			select {
+			case <-p.done:
+				break
+			case <-time.After(time.Second * 60):
+				fmt.Println("timeout")
+				fmt.Println(p.peer.Connected())
+				panic("timeout")
+			}
+		}
 	}
 }

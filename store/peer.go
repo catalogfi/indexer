@@ -3,7 +3,6 @@ package store
 import (
 	"encoding/hex"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/btcsuite/btcd/blockchain"
@@ -21,7 +20,7 @@ func (s *storage) GetBlockLocator() (blockchain.BlockLocator, error) {
 	if err != nil {
 		return nil, err
 	}
-	locatorIDs := calculateLocator([]int{int(height)})
+	locatorIDs := calculateLocator(int64(height))
 	blocks := []model.Block{}
 
 	if res := s.db.Find(&blocks, "height in ?", locatorIDs); res.Error != nil {
@@ -29,49 +28,71 @@ func (s *storage) GetBlockLocator() (blockchain.BlockLocator, error) {
 	}
 
 	hashes := make([]*chainhash.Hash, len(blocks))
-	indices := make([]int32, len(blocks))
+	// indices := make([]int32, len(blocks))
 	for i := range blocks {
 		hash, err := chainhash.NewHashFromStr(blocks[i].Hash)
 		if err != nil {
 			return hashes, err
 		}
 		hashes[i] = hash
-		indices[i] = blocks[i].Height
+		// indices[i] = blocks[i].Height
 	}
 
 	// Reverse the list
-	for i, j := 0, len(hashes)-1; i < j; i, j = i+1, j-1 {
-		hashes[i], hashes[j] = hashes[j], hashes[i]
-	}
+	// for i, j := 0, len(hashes)-1; i < j; i, j = i+1, j-1 {
+	// 	hashes[i], hashes[j] = hashes[j], hashes[i]
+	// }
 
 	return hashes, nil
 }
 
-func calculateLocator(loc []int) []int {
-	if len(loc) == 0 {
-		return []int{}
+func calculateLocator(topHeight int64) []int {
+	var indexes []int
+
+	// Modify the step in the iteration.
+	step := int64(1)
+
+	// Start at the top of the chain and work backwards.
+	for index := topHeight; index > 0; index -= step {
+		// Push top 10 indexes first, then back off exponentially.
+		if len(indexes) >= 10 {
+			step *= 2
+		}
+
+		indexes = append(indexes, int(index))
 	}
 
-	height := loc[len(loc)-1]
-	if height == 0 {
-		return loc
-	}
-
-	step := 0
-	if len(loc) < 12 {
-		step = 1
-	} else {
-		step = int(math.Pow(2, float64(len(loc)-11)))
-	}
-
-	if height <= step {
-		height = 0
-	} else {
-		height -= step
-	}
-
-	return calculateLocator(append(loc, height))
+	// Push the genesis block index.
+	indexes = append(indexes, 0)
+	return indexes
 }
+
+// func calculateLocator(loc []int) []int {
+
+// if len(loc) == 0 {
+// 	return []int{}
+// }
+
+// height := loc[len(loc)-1]
+// if height == 0 {
+// 	return loc
+// }
+
+// step := 0
+// if len(loc) < 12 {
+// 	step = 1
+// } else {
+// 	step = int(math.Pow(2, float64(len(loc)-11)))
+// }
+
+// if height <= step {
+// 	height = 0
+// } else {
+// 	height -= step
+// }
+
+// return calculateLocator(append(loc, height))
+// }
 
 func (s *storage) PutTx(tx *wire.MsgTx) error {
 	return s.putTx(tx, nil, 0)
