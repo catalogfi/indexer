@@ -45,13 +45,17 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 			},
 			OnInv: func(p *peer.Peer, msg *wire.MsgInv) {
 				sendMsg := wire.NewMsgGetData()
+				msgBlockCount := 0
 				for _, inv := range msg.InvList {
 					if inv.Type.String() == "MSG_BLOCK" {
 						sendMsg.AddInvVect(inv)
 						fmt.Println("got an inv", inv.Type.String())
+						msgBlockCount++
 					}
 				}
-				p.QueueMessage(sendMsg, done)
+				if msgBlockCount > 0 {
+					p.QueueMessage(sendMsg, done)
+				}
 			},
 
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
