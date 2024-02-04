@@ -3,6 +3,7 @@ package peer
 import (
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/btcsuite/btcd/blockchain"
@@ -10,6 +11,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btclog"
 )
 
 type Storage interface {
@@ -78,7 +80,8 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewOutboundPeer: error %v", err)
 	}
-
+	btclogger := btclog.NewBackend(os.Stdout).Logger("PEER")
+	peer.UseLogger(btclogger)
 	// Establish the connection to the peer address and mark it connected.
 	conn, err := net.Dial("tcp", p.Addr())
 	if err != nil {
