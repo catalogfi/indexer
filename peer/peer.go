@@ -99,7 +99,7 @@ func (p *Peer) Run() error {
 		if err != nil {
 			return fmt.Errorf("GetBlockLocator: error %v", err)
 		}
-		fmt.Println("sending getblocks", locator)
+		fmt.Println("sending getblocks", locator[0].String())
 		if err := p.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
 			return fmt.Errorf("PushGetBlocksMsg: error %v", err)
 		}
