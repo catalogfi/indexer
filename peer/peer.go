@@ -35,12 +35,6 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 		Services:         wire.SFNodeWitness,
 		TrickleInterval:  time.Second * 10,
 		Listeners: peer.MessageListeners{
-			OnAlert: func(p *peer.Peer, msg *wire.MsgAlert) {
-				fmt.Printf("alert message: %v\n", msg.Payload)
-			},
-			OnReject: func(p *peer.Peer, msg *wire.MsgReject) {
-				fmt.Printf("reject message: %s\n", msg)
-			},
 			OnInv: func(p *peer.Peer, msg *wire.MsgInv) {
 				sendMsg := wire.NewMsgGetData()
 				msgBlockCount := 0
@@ -52,7 +46,7 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 					}
 				}
 				if msgBlockCount > 0 {
-					p.QueueMessage(sendMsg, nil)
+					p.QueueMessage(sendMsg, done)
 				}
 			},
 
@@ -60,7 +54,6 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 				if err := str.PutBlock(msg); err != nil {
 					fmt.Printf("error putting block (%s): %v\n", msg.BlockHash().String(), err)
 				}
-				done <- struct{}{}
 			},
 			OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
 				latestBlock, err := str.GetLatestBlockHeight()
@@ -101,6 +94,12 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 }
 
 func (p *Peer) Run() error {
+
+	go func() {
+		p.peer.WaitForDisconnect()
+		panic("peer disconnected")
+	}()
+
 	for {
 		locator, err := p.storage.GetBlockLocator()
 		if err != nil {
