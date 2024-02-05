@@ -79,7 +79,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		LockTime: tx.LockTime,
 		Version:  tx.Version,
 	}
-	if db != nil {
+	if db == nil {
 		db = s.db
 	}
 	fOCResult := db.FirstOrCreate(transaction, model.Transaction{Hash: transactionHash})
