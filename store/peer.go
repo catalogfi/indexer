@@ -172,12 +172,21 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 }
 
 func (s *storage) PutBlock(block *wire.MsgBlock) error {
+	dbTx := s.db.Begin()
+
+	handleError := func(err error) error {
+		if rErr := dbTx.Rollback().Error; rErr != nil {
+			return fmt.Errorf("failed to put block: %v: failed to rollback the transaction: %v", err.Error(), rErr.Error())
+		}
+		return err
+	}
+
 	height := int32(-1)
 	previousBlock := &model.Block{}
 	if block.Header.PrevBlock.String() == s.params.GenesisBlock.BlockHash().String() {
 		genesisBlock := btcutil.NewBlock(s.params.GenesisBlock)
 		genesisBlock.SetHeight(0)
-		if result := s.db.Create(&model.Block{
+		if result := dbTx.Create(&model.Block{
 			Hash:   genesisBlock.Hash().String(),
 			Height: 0,
 
@@ -189,35 +198,35 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			Bits:          genesisBlock.MsgBlock().Header.Bits,
 			MerkleRoot:    genesisBlock.MsgBlock().Header.MerkleRoot.String(),
 		}); result.Error != nil {
-			return result.Error
+			return handleError(result.Error)
 		}
 
 		// This is created for the coinbase transaction
-		resp := s.db.Create(&model.Transaction{
+		resp := dbTx.Create(&model.Transaction{
 			Hash: "0000000000000000000000000000000000000000000000000000000000000000",
 		})
 		if resp.Error != nil {
-			return resp.Error
+			return handleError(resp.Error)
 		}
 
 		height = 1
 	} else {
-		if resp := s.db.First(&previousBlock, "hash = ?", block.Header.PrevBlock.String()); resp.Error != nil {
-			return resp.Error
+		if resp := dbTx.First(&previousBlock, "hash = ?", block.Header.PrevBlock.String()); resp.Error != nil {
+			return handleError(resp.Error)
 		}
 
 		if previousBlock.IsOrphan {
 			newlyOrphanedBlock := &model.Block{}
-			if resp := s.db.First(newlyOrphanedBlock, "height = ? AND is_orphan = ?", previousBlock.Height, false); resp.Error != nil {
-				return resp.Error
+			if resp := dbTx.First(newlyOrphanedBlock, "height = ? AND is_orphan = ?", previousBlock.Height, false); resp.Error != nil {
+				return handleError(resp.Error)
 			}
-			if err := s.orphanBlock(newlyOrphanedBlock); err != nil {
-				return err
+			if err := s.orphanBlock(newlyOrphanedBlock, dbTx); err != nil {
+				return handleError(err)
 			}
 
 			previousBlock.IsOrphan = false
-			if resp := s.db.Save(&previousBlock); resp.Error != nil {
-				return resp.Error
+			if resp := dbTx.Save(&previousBlock); resp.Error != nil {
+				return handleError(resp.Error)
 			}
 		}
 
@@ -227,13 +236,13 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	blockAtHeight := &model.Block{}
 	// time taken to find the block at the height
 	timeNow := time.Now()
-	resp := s.db.First(&blockAtHeight, "height = ?", height)
+	resp := dbTx.First(&blockAtHeight, "height = ?", height)
 	if resp.Error != gorm.ErrRecordNotFound {
 		if resp.Error != nil {
-			return resp.Error
+			return handleError(resp.Error)
 		}
-		if err := s.orphanBlock(blockAtHeight); err != nil {
-			return err
+		if err := s.orphanBlock(blockAtHeight, dbTx); err != nil {
+			return handleError(err)
 		}
 	}
 	fmt.Println("Time taken to find the block at the height", time.Since(timeNow).Milliseconds(), "milliseconds")
@@ -250,45 +259,39 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		Bits:          block.Header.Bits,
 		MerkleRoot:    block.Header.MerkleRoot.String(),
 	}
-	if result := s.db.Create(bblock); result.Error != nil {
-		return result.Error
+	if result := dbTx.Create(bblock); result.Error != nil {
+		return handleError(result.Error)
 	}
 	fmt.Println("Time taken to create the block", time.Since(timeNow).Milliseconds(), "milliseconds")
 	timeNow = time.Now()
 
-	dbTx := s.db.Begin()
-	if dbTx.Error != nil {
-		return dbTx.Error
-	}
 	for i, tx := range block.Transactions {
 		if err := s.putTx(tx, bblock, uint32(i), dbTx); err != nil {
-			if rError := dbTx.Rollback().Error; rError != nil {
-				return fmt.Errorf("failed to put tx: %v: failed to rollback the transaction: %v", err.Error(), rError.Error())
-			}
-			return err
+			return handleError(err)
 		}
-	}
-	if err := dbTx.Commit().Error; err != nil {
-		return err
 	}
 
 	fmt.Println("Time taken to put the transactions", time.Since(timeNow).Milliseconds(), "milliseconds")
 	timeNow = time.Now()
 	aBlock := &model.Block{}
-	if resp := s.db.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
-		return fmt.Errorf("failed to retrieve the stored block: %v", resp.Error)
+	if resp := dbTx.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
+		return handleError(fmt.Errorf("failed to retrieve the stored block: %v", resp.Error))
 	}
 	fmt.Println("Time taken to retrieve the stored block", time.Since(timeNow).Milliseconds(), "milliseconds")
 	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
-
+	if err := dbTx.Commit().Error; err != nil {
+		return handleError(fmt.Errorf("failed to commit the transaction: %v", err))
+	}
 	return nil
 }
 
-func (s *storage) orphanBlock(block *model.Block) error {
+func (s *storage) orphanBlock(block *model.Block, db *gorm.DB) error {
 	block.IsOrphan = true
-
+	if db == nil {
+		db = s.db
+	}
 	txs := []model.Transaction{}
-	if resp := s.db.Order("block_index").Find(&txs, "block_hash = ?", block.Hash); resp.Error != nil {
+	if resp := db.Order("block_index").Find(&txs, "block_hash = ?", block.Hash); resp.Error != nil {
 		return resp.Error
 	}
 
@@ -296,11 +299,11 @@ func (s *storage) orphanBlock(block *model.Block) error {
 		tx.BlockID = 0
 		tx.BlockHash = ""
 		tx.BlockIndex = 0
-		if resp := s.db.Save(&tx); resp.Error != nil {
+		if resp := db.Save(&tx); resp.Error != nil {
 			return resp.Error
 		}
 	}
-	resp := s.db.Save(block)
+	resp := db.Save(block)
 	return resp.Error
 }
 
