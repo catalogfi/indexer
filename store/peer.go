@@ -259,6 +259,7 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		return dbTx.Error
 	}
 	for i, tx := range block.Transactions {
+		s.db = dbTx
 		if err := s.putTx(tx, bblock, uint32(i)); err != nil {
 			if rError := dbTx.Rollback().Error; rError != nil {
 				return fmt.Errorf("failed to put tx: %v: failed to rollback the transaction: %v", err.Error(), rError.Error())
@@ -266,8 +267,9 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			return err
 		}
 	}
-	if dbTx.Commit().Error != nil {
-		return dbTx.Error
+	s.db = dbTx.Commit()
+	if s.db.Error != nil {
+		return s.db.Error
 	}
 
 	fmt.Println("Time taken to put the transactions", time.Since(timeNow).Milliseconds(), "milliseconds")
