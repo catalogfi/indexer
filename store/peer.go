@@ -69,18 +69,20 @@ func calculateLocator(topHeight int64) []int {
 }
 
 func (s *storage) PutTx(tx *wire.MsgTx) error {
-	return s.putTx(tx, nil, 0)
+	return s.putTx(tx, nil, 0, nil)
 }
 
-func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) error {
+func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, db *gorm.DB) error {
 	transactionHash := tx.TxHash().String()
 	transaction := &model.Transaction{
 		Hash:     transactionHash,
 		LockTime: tx.LockTime,
 		Version:  tx.Version,
 	}
-
-	fOCResult := s.db.FirstOrCreate(transaction, model.Transaction{Hash: transactionHash})
+	if db != nil {
+		db = s.db
+	}
+	fOCResult := db.FirstOrCreate(transaction, model.Transaction{Hash: transactionHash})
 	if fOCResult.Error != nil {
 		return fOCResult.Error
 	}
@@ -89,7 +91,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		transaction.BlockID = block.ID
 		transaction.BlockIndex = blockIndex
 		transaction.BlockHash = block.Hash
-		if result := s.db.Save(transaction); result.Error != nil {
+		if result := db.Save(transaction); result.Error != nil {
 			return result.Error
 		}
 	}
@@ -110,7 +112,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		txInOut := model.OutPoint{}
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
 			// Add SpendingTx to the outpoint
-			if result := s.db.First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
+			if result := db.First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
 				return result.Error
 			}
 			txInOut.SpendingTxID = transaction.ID
@@ -119,14 +121,14 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 			txInOut.Sequence = txIn.Sequence
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
-			if res := s.db.Save(&txInOut); res.Error != nil {
+			if res := db.Save(&txInOut); res.Error != nil {
 				return res.Error
 			}
 			continue
 		}
 
 		// Create coinbase transactions
-		if res := s.db.Create(&model.OutPoint{
+		if res := db.Create(&model.OutPoint{
 			SpendingTxID:    transaction.ID,
 			SpendingTxHash:  transactionHash,
 			SpendingTxIndex: inIndex,
@@ -154,7 +156,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32) e
 		}
 
 		// Create a new outpoint
-		if res := s.db.Create(&model.OutPoint{
+		if res := db.Create(&model.OutPoint{
 			FundingTxID:    transaction.ID,
 			FundingTxHash:  transactionHash,
 			FundingTxIndex: uint32(i),
@@ -259,17 +261,15 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 		return dbTx.Error
 	}
 	for i, tx := range block.Transactions {
-		s.db = dbTx
-		if err := s.putTx(tx, bblock, uint32(i)); err != nil {
+		if err := s.putTx(tx, bblock, uint32(i), dbTx); err != nil {
 			if rError := dbTx.Rollback().Error; rError != nil {
 				return fmt.Errorf("failed to put tx: %v: failed to rollback the transaction: %v", err.Error(), rError.Error())
 			}
 			return err
 		}
 	}
-	s.db = dbTx.Commit()
-	if s.db.Error != nil {
-		return s.db.Error
+	if err := dbTx.Commit().Error; err != nil {
+		return err
 	}
 
 	fmt.Println("Time taken to put the transactions", time.Since(timeNow).Milliseconds(), "milliseconds")
