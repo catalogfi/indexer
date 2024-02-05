@@ -68,33 +68,6 @@ func calculateLocator(topHeight int64) []int {
 	return indexes
 }
 
-// func calculateLocator(loc []int) []int {
-
-// if len(loc) == 0 {
-// 	return []int{}
-// }
-
-// height := loc[len(loc)-1]
-// if height == 0 {
-// 	return loc
-// }
-
-// step := 0
-// if len(loc) < 12 {
-// 	step = 1
-// } else {
-// 	step = int(math.Pow(2, float64(len(loc)-11)))
-// }
-
-// if height <= step {
-// 	height = 0
-// } else {
-// 	height -= step
-// }
-
-// return calculateLocator(append(loc, height))
-// }
-
 func (s *storage) PutTx(tx *wire.MsgTx) error {
 	return s.putTx(tx, nil, 0)
 }
@@ -280,11 +253,23 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	}
 	fmt.Println("Time taken to create the block", time.Since(timeNow).Milliseconds(), "milliseconds")
 	timeNow = time.Now()
+
+	dbTx := s.db.Begin()
+	if dbTx.Error != nil {
+		return dbTx.Error
+	}
 	for i, tx := range block.Transactions {
 		if err := s.putTx(tx, bblock, uint32(i)); err != nil {
+			if rError := dbTx.Rollback().Error; rError != nil {
+				return fmt.Errorf("failed to put tx: %v: failed to rollback the transaction: %v", err.Error(), rError.Error())
+			}
 			return err
 		}
 	}
+	if dbTx.Commit().Error != nil {
+		return dbTx.Error
+	}
+
 	fmt.Println("Time taken to put the transactions", time.Since(timeNow).Milliseconds(), "milliseconds")
 	timeNow = time.Now()
 	aBlock := &model.Block{}
