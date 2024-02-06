@@ -45,8 +45,8 @@ type OutPoint struct {
 	Witness         string
 
 	FundingTxID    uint
-	FundingTxHash  string
-	FundingTxIndex uint32
+	FundingTxHash  string `gorm:"index"`
+	FundingTxIndex uint32 `gorm:"index"`
 	PkScript       string
 	Value          int64
 	Spender        string
