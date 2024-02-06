@@ -180,7 +180,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 
 	}
 	// psql doesn't support bulk insert after 65k something
-	chunkSize := 60000
+	chunkSize := 1000
 	numChunks := (len(txOuts) + chunkSize - 1) / chunkSize
 
 	for i := 0; i < numChunks; i++ {
