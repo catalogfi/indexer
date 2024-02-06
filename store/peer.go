@@ -179,8 +179,20 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		})
 
 	}
-	if res := db.Create(&txOuts); res.Error != nil {
-		return res.Error
+	// psql doesn't support bulk insert after 65k something
+	chunkSize := 60000
+	numChunks := (len(txOuts) + chunkSize - 1) / chunkSize
+
+	for i := 0; i < numChunks; i++ {
+		start := i * chunkSize
+		end := (i + 1) * chunkSize
+		if end > len(txOuts) {
+			end = len(txOuts)
+		}
+		chunk := txOuts[start:end]
+		if res := db.Create(&chunk); res.Error != nil {
+			return res.Error
+		}
 	}
 	return nil
 }
