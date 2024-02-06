@@ -9,9 +9,9 @@ import (
 type Block struct {
 	gorm.Model
 
-	Hash     string
-	Height   int32
-	IsOrphan bool
+	Hash     string `gorm:"index"`
+	Height   int32  `gorm:"index"`
+	IsOrphan bool   `gorm:"index"`
 
 	PreviousBlock string
 	Version       int32
@@ -24,7 +24,7 @@ type Block struct {
 type Transaction struct {
 	gorm.Model
 
-	Hash     string
+	Hash     string `gorm:"index"`
 	LockTime uint32
 	Version  int32
 	Safe     bool
