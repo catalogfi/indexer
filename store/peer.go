@@ -82,13 +82,10 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 	if db == nil {
 		db = s.db
 	}
-	timeNow := time.Now()
 	fOCResult := db.FirstOrCreate(transaction, model.Transaction{Hash: transactionHash})
 	if fOCResult.Error != nil {
 		return fOCResult.Error
 	}
-	fmt.Println("Time taken to find or create the transaction", time.Since(timeNow).Milliseconds(), "milliseconds")
-	timeNow = time.Now()
 	if block != nil {
 		transaction.BlockID = block.ID
 		transaction.BlockIndex = blockIndex
@@ -97,12 +94,12 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 			return result.Error
 		}
 	}
-	fmt.Println("Time taken to save the transaction", time.Since(timeNow).Milliseconds(), "milliseconds")
+
 	if fOCResult.RowsAffected == 0 {
 		// If the transaction already exists, we don't need to do anything else
 		return nil
 	}
-	timeNow = time.Now()
+	timeNow := time.Now()
 	for i, txIn := range tx.TxIn {
 		inIndex := uint32(i)
 		witness := make([]string, len(txIn.Witness))
@@ -113,25 +110,23 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 
 		txInOut := model.OutPoint{}
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-			innerTime := time.Now()
 			// Add SpendingTx to the outpoint
-			if result := db.Select("id").First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
+			if result := db.First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
 				return result.Error
 			}
-			fmt.Println("Time taken to find the outpoint with funding info", time.Since(innerTime).Milliseconds(), "milliseconds")
+
 			txInOut.SpendingTxID = transaction.ID
 			txInOut.SpendingTxHash = transactionHash
 			txInOut.SpendingTxIndex = inIndex
 			txInOut.Sequence = txIn.Sequence
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
-			fmt.Println("id being updated", txInOut.ID)
+
 			if res := db.Save(&txInOut); res.Error != nil {
 				return res.Error
 			}
 			continue
 		}
-		innerTime := time.Now()
 		// Create coinbase transactions
 		if res := db.Create(&model.OutPoint{
 			SpendingTxID:    transaction.ID,
@@ -146,10 +141,8 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		}); res.Error != nil {
 			return res.Error
 		}
-		fmt.Println("Time taken to create the coinbase transactions", time.Since(innerTime).Milliseconds(), "milliseconds")
 	}
 	fmt.Println("Time taken to put the inputs", time.Since(timeNow).Milliseconds(), "milliseconds")
-	timeNow = time.Now()
 	txOuts := []model.OutPoint{}
 	for i, txOut := range tx.TxOut {
 		spenderAddress := ""
@@ -189,7 +182,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 	if res := db.Create(&txOuts); res.Error != nil {
 		return res.Error
 	}
-	fmt.Println("Time taken to put the outputs", time.Since(timeNow).Milliseconds(), "milliseconds")
 	return nil
 }
 
@@ -267,7 +259,6 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 			return handleError(err)
 		}
 	}
-	fmt.Println("Time taken to find the block at the height", time.Since(timeNow).Milliseconds(), "milliseconds")
 	timeNow = time.Now()
 	bblock := &model.Block{
 		Hash:   block.Header.BlockHash().String(),
@@ -294,13 +285,8 @@ func (s *storage) PutBlock(block *wire.MsgBlock) error {
 	}
 
 	fmt.Println("Time taken to put the transactions", time.Since(timeNow).Milliseconds(), "milliseconds")
-	timeNow = time.Now()
-	aBlock := &model.Block{}
-	if resp := dbTx.First(aBlock, "hash = ?", block.Header.BlockHash().String()); resp.Error != nil {
-		return handleError(fmt.Errorf("failed to retrieve the stored block: %v", resp.Error))
-	}
-	fmt.Println("Time taken to retrieve the stored block", time.Since(timeNow).Milliseconds(), "milliseconds")
-	fmt.Println("Block", aBlock.Height, "has been added to the database", aBlock)
+
+	fmt.Println("Block", bblock.Height, "has been added to the database", bblock)
 	if err := dbTx.Commit().Error; err != nil {
 		return handleError(fmt.Errorf("failed to commit the transaction: %v", err))
 	}
