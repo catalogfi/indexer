@@ -125,6 +125,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 			txInOut.Sequence = txIn.Sequence
 			txInOut.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 			txInOut.Witness = witnessString
+			fmt.Println("id being updated", txInOut.ID)
 			if res := db.Save(&txInOut); res.Error != nil {
 				return res.Error
 			}
