@@ -113,9 +113,9 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 
 		txInOut := model.OutPoint{}
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-			// Add SpendingTx to the outpoint
 			innerTime := time.Now()
-			if result := db.First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
+			// Add SpendingTx to the outpoint
+			if result := db.Select("id").First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
 				return result.Error
 			}
 			fmt.Println("Time taken to find the outpoint with funding info", time.Since(innerTime).Milliseconds(), "milliseconds")
