@@ -82,11 +82,13 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 	if db == nil {
 		db = s.db
 	}
+	timeNow := time.Now()
 	fOCResult := db.FirstOrCreate(transaction, model.Transaction{Hash: transactionHash})
 	if fOCResult.Error != nil {
 		return fOCResult.Error
 	}
-
+	fmt.Println("Time taken to find or create the transaction", time.Since(timeNow).Milliseconds(), "milliseconds")
+	timeNow = time.Now()
 	if block != nil {
 		transaction.BlockID = block.ID
 		transaction.BlockIndex = blockIndex
@@ -95,12 +97,12 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 			return result.Error
 		}
 	}
-
+	fmt.Println("Time taken to save the transaction", time.Since(timeNow).Milliseconds(), "milliseconds")
 	if fOCResult.RowsAffected == 0 {
 		// If the transaction already exists, we don't need to do anything else
 		return nil
 	}
-
+	timeNow = time.Now()
 	for i, txIn := range tx.TxIn {
 		inIndex := uint32(i)
 		witness := make([]string, len(txIn.Witness))
@@ -142,7 +144,9 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 			return res.Error
 		}
 	}
-
+	fmt.Println("Time taken to put the inputs", time.Since(timeNow).Milliseconds(), "milliseconds")
+	timeNow = time.Now()
+	txOuts := []model.OutPoint{}
 	for i, txOut := range tx.TxOut {
 		spenderAddress := ""
 
@@ -156,7 +160,18 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		}
 
 		// Create a new outpoint
-		if res := db.Create(&model.OutPoint{
+		// if res := db.Create(&model.OutPoint{
+		// 	FundingTxID:    transaction.ID,
+		// 	FundingTxHash:  transactionHash,
+		// 	FundingTxIndex: uint32(i),
+		// 	PkScript:       hex.EncodeToString(txOut.PkScript),
+		// 	Value:          txOut.Value,
+		// 	Spender:        spenderAddress,
+		// 	Type:           pkScript.Class().String(),
+		// }); res.Error != nil {
+		// 	return res.Error
+		// }
+		txOuts = append(txOuts, model.OutPoint{
 			FundingTxID:    transaction.ID,
 			FundingTxHash:  transactionHash,
 			FundingTxIndex: uint32(i),
@@ -164,10 +179,13 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 			Value:          txOut.Value,
 			Spender:        spenderAddress,
 			Type:           pkScript.Class().String(),
-		}); res.Error != nil {
-			return res.Error
-		}
+		})
+
 	}
+	if res := db.Create(&txOuts); res.Error != nil {
+		return res.Error
+	}
+	fmt.Println("Time taken to put the outputs", time.Since(timeNow).Milliseconds(), "milliseconds")
 	return nil
 }
 
