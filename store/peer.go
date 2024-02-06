@@ -114,9 +114,11 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		txInOut := model.OutPoint{}
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
 			// Add SpendingTx to the outpoint
+			innerTime := time.Now()
 			if result := db.First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
 				return result.Error
 			}
+			fmt.Println("Time taken to find the outpoint with funding info", time.Since(innerTime).Milliseconds(), "milliseconds")
 			txInOut.SpendingTxID = transaction.ID
 			txInOut.SpendingTxHash = transactionHash
 			txInOut.SpendingTxIndex = inIndex
@@ -128,7 +130,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 			}
 			continue
 		}
-
+		innerTime := time.Now()
 		// Create coinbase transactions
 		if res := db.Create(&model.OutPoint{
 			SpendingTxID:    transaction.ID,
@@ -143,6 +145,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		}); res.Error != nil {
 			return res.Error
 		}
+		fmt.Println("Time taken to create the coinbase transactions", time.Since(innerTime).Milliseconds(), "milliseconds")
 	}
 	fmt.Println("Time taken to put the inputs", time.Since(timeNow).Milliseconds(), "milliseconds")
 	timeNow = time.Now()
