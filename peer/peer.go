@@ -49,7 +49,6 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 					p.QueueMessage(sendMsg, done)
 				}
 			},
-
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 				if err := str.PutBlock(msg); err != nil {
 					fmt.Printf("error putting block (%s): %v\n", msg.BlockHash().String(), err)
@@ -93,14 +92,34 @@ func NewPeer(url string, str Storage) (*Peer, error) {
 	}, nil
 }
 
+func (p *Peer) WaitForDisconnect() {
+	p.peer.WaitForDisconnect()
+}
+
+func (p *Peer) Addr() string {
+	return p.peer.Addr()
+}
+
+func (p *Peer) Reconnect() (*Peer, error) {
+	p.peer.Disconnect()
+
+	peerAddr := p.peer.Addr()
+	storage := p.storage
+
+	peer, err := NewPeer(peerAddr, storage)
+	if err != nil {
+		return nil, fmt.Errorf("error reconnecting to peer: %v\n", err)
+	}
+	return peer, nil
+}
+
 func (p *Peer) Run() error {
 
-	go func() {
-		p.peer.WaitForDisconnect()
-		panic("peer disconnected")
-	}()
-
 	for {
+		if !p.peer.Connected() {
+			close(p.done)
+			return fmt.Errorf("peer disconnected")
+		}
 		locator, err := p.storage.GetBlockLocator()
 		if err != nil {
 			return fmt.Errorf("GetBlockLocator: error %v", err)
