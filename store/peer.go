@@ -101,27 +101,6 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 	}
 	timeNow := time.Now()
 
-	fundingTxHashes := make([]string, 0)
-	fundingTxIndices := make([]uint32, 0)
-
-	for _, txIn := range tx.TxIn {
-		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-			fundingTxHashes = append(fundingTxHashes, txIn.PreviousOutPoint.Hash.String())
-			fundingTxIndices = append(fundingTxIndices, txIn.PreviousOutPoint.Index)
-		}
-	}
-
-	// Get the funding transactions
-	fundingTxs := []model.OutPoint{}
-	if res := db.Where("funding_tx_hash in (?) AND funding_tx_index in (?)", fundingTxHashes, fundingTxIndices).Find(&fundingTxs); res.Error != nil {
-		return res.Error
-	}
-
-	fundingTxsMap := make(map[string]model.OutPoint)
-	for _, txInOut := range fundingTxs {
-		fundingTxsMap[txInOut.FundingTxHash+fmt.Sprint(txInOut.FundingTxIndex)] = txInOut
-	}
-
 	for i, txIn := range tx.TxIn {
 		inIndex := uint32(i)
 		witness := make([]string, len(txIn.Witness))
@@ -131,9 +110,9 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		witnessString := strings.Join(witness, ",")
 
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-			txInOut := fundingTxsMap[txIn.PreviousOutPoint.Hash.String()+fmt.Sprint(txIn.PreviousOutPoint.Index)]
-			if txInOut.FundingTxHash != txIn.PreviousOutPoint.Hash.String() || txInOut.FundingTxIndex != txIn.PreviousOutPoint.Index {
-				panic("funding txs are not in the correct order")
+			txInOut := &model.OutPoint{}
+			if res := db.First(txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); res.Error != nil {
+				return res.Error
 			}
 			txInOut.SpendingTxID = transaction.ID
 			txInOut.SpendingTxHash = transactionHash
