@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/catalogfi/indexer/model"
 	"github.com/catalogfi/indexer/peer"
@@ -15,7 +17,7 @@ func main() {
 		panic(err)
 	}
 	str := store.NewStorage(&chaincfg.TestNet3Params, db)
-	p, err := peer.NewPeer("", str)
+	p, err := peer.NewPeer(os.Getenv("PEER_URL"), str)
 	if err != nil {
 		panic(err)
 	}

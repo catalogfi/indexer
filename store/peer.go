@@ -100,6 +100,23 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		return nil
 	}
 	timeNow := time.Now()
+
+	fundingTxHashes := make([]string, 0)
+	fundingTxIndices := make([]uint32, 0)
+
+	for _, txIn := range tx.TxIn {
+		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
+			fundingTxHashes = append(fundingTxHashes, txIn.PreviousOutPoint.Hash.String())
+			fundingTxIndices = append(fundingTxIndices, txIn.PreviousOutPoint.Index)
+		}
+	}
+
+	// Get the funding transactions
+	fundingTxs := []model.OutPoint{}
+	if res := db.Where("funding_tx_hash in (?) AND funding_tx_index in (?)", fundingTxHashes, fundingTxIndices).Find(&fundingTxs); res.Error != nil {
+		return res.Error
+	}
+
 	for i, txIn := range tx.TxIn {
 		inIndex := uint32(i)
 		witness := make([]string, len(txIn.Witness))
@@ -108,13 +125,11 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		}
 		witnessString := strings.Join(witness, ",")
 
-		txInOut := model.OutPoint{}
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-			// Add SpendingTx to the outpoint
-			if result := db.First(&txInOut, "funding_tx_hash = ? AND funding_tx_index = ?", txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); result.Error != nil {
-				return result.Error
+			txInOut := fundingTxs[i-1]
+			if txInOut.FundingTxHash != txIn.PreviousOutPoint.Hash.String() || txInOut.FundingTxIndex != txIn.PreviousOutPoint.Index {
+				panic("funding txs are not in the correct order")
 			}
-
 			txInOut.SpendingTxID = transaction.ID
 			txInOut.SpendingTxHash = transactionHash
 			txInOut.SpendingTxIndex = inIndex
@@ -179,7 +194,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		})
 
 	}
-	// psql doesn't support a large bulk insert
+	// psql doesn't support a laaarge bulk insert
 	chunkSize := 1000
 	numChunks := (len(txOuts) + chunkSize - 1) / chunkSize
 
