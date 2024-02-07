@@ -30,7 +30,7 @@ type Transaction struct {
 	Safe     bool
 
 	BlockID    uint
-	BlockHash  string
+	BlockHash  string `gorm:"index"`
 	BlockIndex uint32
 }
 
