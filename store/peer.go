@@ -117,6 +117,11 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		return res.Error
 	}
 
+	fundingTxsMap := make(map[string]model.OutPoint)
+	for _, txInOut := range fundingTxs {
+		fundingTxsMap[txInOut.FundingTxHash+fmt.Sprint(txInOut.FundingTxIndex)] = txInOut
+	}
+
 	for i, txIn := range tx.TxIn {
 		inIndex := uint32(i)
 		witness := make([]string, len(txIn.Witness))
@@ -126,7 +131,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 		witnessString := strings.Join(witness, ",")
 
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-			txInOut := fundingTxs[i-1]
+			txInOut := fundingTxsMap[txIn.PreviousOutPoint.Hash.String()+fmt.Sprint(txIn.PreviousOutPoint.Index)]
 			if txInOut.FundingTxHash != txIn.PreviousOutPoint.Hash.String() || txInOut.FundingTxIndex != txIn.PreviousOutPoint.Index {
 				panic("funding txs are not in the correct order")
 			}
@@ -157,6 +162,7 @@ func (s *storage) putTx(tx *wire.MsgTx, block *model.Block, blockIndex uint32, d
 			return res.Error
 		}
 	}
+
 	fmt.Println("Time taken to put the inputs", time.Since(timeNow).Milliseconds(), "milliseconds")
 	txOuts := []model.OutPoint{}
 	for i, txOut := range tx.TxOut {
