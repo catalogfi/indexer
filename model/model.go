@@ -1,17 +1,14 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type Block struct {
-	gorm.Model
-
-	Hash     string `gorm:"index"`
-	Height   int32  `gorm:"index"`
-	IsOrphan bool   `gorm:"index"`
+	Hash     string
+	Height   uint64
+	IsOrphan bool
 
 	PreviousBlock string
 	Version       int32
@@ -19,45 +16,99 @@ type Block struct {
 	Timestamp     time.Time
 	Bits          uint32
 	MerkleRoot    string
+
+	//Transactions
+	Txs []string
 }
 
 type Transaction struct {
-	gorm.Model
-
-	Hash     string `gorm:"index"`
+	Hash     string
 	LockTime uint32
 	Version  int32
 	Safe     bool
 
-	BlockID    uint
-	BlockHash  string `gorm:"index"`
-	BlockIndex uint32
+	BlockHash   string
+	BlockHeight uint64
+
+	//VINs
+	Vins []Vin
+	//VOUTs
+	Vouts []Vout
 }
 
-type OutPoint struct {
-	gorm.Model
-
-	SpendingTxID    uint
+type Vin struct {
 	SpendingTxHash  string
 	SpendingTxIndex uint32
 	Sequence        uint32
 	SignatureScript string
 	Witness         string
+}
 
-	FundingTxID    uint
-	FundingTxHash  string `gorm:"index"`
-	FundingTxIndex uint32 `gorm:"index"`
+type Vout struct {
+	FundingTxHash  string
+	FundingTxIndex uint32
 	PkScript       string
 	Value          int64
 	Spender        string
 	Type           string
+
+	//Block info
+	BlockHash   string
+	BlockHeight uint64
 }
 
-func NewDB(dialector gorm.Dialector, opts ...gorm.Option) (*gorm.DB, error) {
-	db, err := gorm.Open(dialector, opts...)
+func UnmarshalBlock(data []byte) (*Block, error) {
+	block := &Block{}
+	err := json.Unmarshal(data, block)
 	if err != nil {
 		return nil, err
 	}
-	db.AutoMigrate(&Block{}, &Transaction{}, &OutPoint{})
-	return db, nil
+	return block, nil
+}
+
+func (b *Block) Marshal() []byte {
+	data, _ := json.Marshal(b)
+	return data
+}
+
+func UnmarshalVout(data []byte) (*Vout, error) {
+	vout := &Vout{}
+	err := json.Unmarshal(data, vout)
+	if err != nil {
+		return nil, err
+	}
+	return vout, nil
+}
+
+func UnmarshalVouts(data []byte) ([]*Vout, error) {
+	var vouts []*Vout
+	err := json.Unmarshal(data, &vouts)
+	if err != nil {
+		return nil, err
+	}
+	return vouts, nil
+}
+
+func MarshalVouts(vouts []*Vout) []byte {
+	data, _ := json.Marshal(vouts)
+	return data
+}
+
+func (v *Vout) Marshal() []byte {
+	data, _ := json.Marshal(v)
+	return data
+}
+
+func (t *Transaction) Marshal() []byte {
+	data, _ := json.Marshal(t)
+	return data
+}
+
+func UnmarshalTransaction(data []byte) (*Transaction, error) {
+	tx := &Transaction{}
+	err := json.Unmarshal(data, tx)
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
 }

@@ -4,23 +4,24 @@ import (
 	"os"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/catalogfi/indexer/model"
-	"github.com/catalogfi/indexer/peer"
+	"github.com/catalogfi/indexer/database"
+	"github.com/catalogfi/indexer/netsync"
 	"github.com/catalogfi/indexer/store"
-	"github.com/catalogfi/indexer/syncer"
 	"go.uber.org/zap"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 func main() {
 
-	logger, err := zap.NewDevelopment()
-
-	db, err := model.NewDB(postgres.Open(os.Getenv("PSQL_URL")), &gorm.Config{})
+	config := zap.NewDevelopmentConfig()
+	config.OutputPaths = []string{"stdout"}
+	logger, err := config.Build()
 	if err != nil {
 		panic(err)
 	}
+	dbPath := os.Getenv("DB_PATH")
+	dbName := os.Getenv("DB_NAME")
+
+	db, err := database.NewMDBX(dbPath, dbName)
 
 	var params *chaincfg.Params
 	switch os.Getenv("NETWORK") {
@@ -33,12 +34,15 @@ func main() {
 	default:
 		panic("invalid network")
 	}
-	str := store.NewStorage(params, db)
 
-	p, err := peer.NewPeer(os.Getenv("PEER_URL"), str)
+	syncManager, err := netsync.NewSyncManager(netsync.SyncConfig{
+		PeerAddr:    os.Getenv("PEER_URL"),
+		ChainParams: params,
+		Store:       store.NewStorage(db),
+		Logger:      logger,
+	})
 	if err != nil {
 		panic(err)
 	}
-	syncManager := syncer.NewSyncManager(p, logger.Named("sync_manager"))
 	syncManager.Sync()
 }

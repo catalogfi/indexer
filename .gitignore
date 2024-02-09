@@ -1,3 +1,4 @@
 bitcoin.conf
 gorm.db
 .env*
+data
