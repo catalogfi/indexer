@@ -120,6 +120,11 @@ func (s *SyncManager) Sync() {
 		}
 	}()
 
+	go func() {
+		s.peer.WaitForDisconnect()
+		s.logger.Info("peer disconnected")
+	}()
+
 	//block fetcher
 	for {
 		locator, err := s.getBlockLocator()
