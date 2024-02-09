@@ -324,7 +324,8 @@ func (s *SyncManager) putTx(tx *wire.MsgTx, block *wire.MsgBlock, height uint64)
 			BlockHash:   block.BlockHash().String(),
 			BlockHeight: height,
 		}
-		if len(hex.EncodeToString(txOut.PkScript)) > 20 {
+		//TODO: better validation
+		if len(hex.EncodeToString(txOut.PkScript)) > 20 && len(hex.EncodeToString(txOut.PkScript)) < 500 {
 			if err := s.store.PutUTXO(vout); err != nil {
 				return err
 			}
