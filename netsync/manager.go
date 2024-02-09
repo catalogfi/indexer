@@ -236,7 +236,6 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 	}
 
 	for _, tx := range block.Transactions {
-		s.logger.Info("putting tx", zap.String("hash", tx.TxHash().String()))
 		if err := s.putTx(tx, block, height); err != nil {
 			return err
 		}
@@ -248,6 +247,9 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 }
 
 func (s *SyncManager) putTx(tx *wire.MsgTx, block *wire.MsgBlock, height uint64) error {
+	logger := s.logger.Named(fmt.Sprint(height))
+	logger.Info("putting tx", zap.String("hash", tx.TxHash().String()))
+
 	transactionHash := tx.TxHash().String()
 	transaction := &model.Transaction{
 		Hash:     transactionHash,
