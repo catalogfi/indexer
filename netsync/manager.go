@@ -3,14 +3,11 @@ package netsync
 import (
 	"encoding/hex"
 	"fmt"
-	"net"
 	"strings"
-	"time"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 
@@ -20,12 +17,10 @@ import (
 )
 
 type SyncManager struct {
-	peer               *peer.Peer //TODO: will we have multiple peers in future?
-	logger             *zap.Logger
-	store              *store.Storage
-	chainParams        *chaincfg.Params
-	blocks             chan *wire.MsgBlock
-	latestQueryMsgDone chan struct{}
+	peer        *Peer //TODO: will we have multiple peers in future?
+	logger      *zap.Logger
+	store       *store.Storage
+	chainParams *chaincfg.Params
 }
 
 type SyncConfig struct {
@@ -38,108 +33,58 @@ type SyncConfig struct {
 func NewSyncManager(config SyncConfig) (*SyncManager, error) {
 
 	logger := config.Logger.Named("syncManager")
-
-	done := make(chan struct{})
-	blocks := make(chan *wire.MsgBlock)
-
-	peerCfg := &peer.Config{
-		UserAgentName:    "peer",
-		UserAgentVersion: "1.0.0",
-		ChainParams:      config.ChainParams,
-		Services:         wire.SFNodeWitness,
-		TrickleInterval:  time.Second * 10,
-		Listeners: peer.MessageListeners{
-
-			//whenever we receive an inv message, we will request the data from the peer
-			//inventory message is received when a peer requests (getblock) from another peer
-			//and also when peer sends new mempool transactions
-			OnInv: func(p *peer.Peer, msg *wire.MsgInv) {
-				sendMsg := wire.NewMsgGetData()
-				blockMsg := 0
-				for _, inv := range msg.InvList {
-					//TODO: handle tx invs
-					if inv.Type == wire.InvTypeBlock {
-						sendMsg.AddInvVect(inv)
-						blockMsg++
-					}
-				}
-				if blockMsg > 0 {
-					p.QueueMessage(sendMsg, done)
-				}
-			},
-
-			//whenever we receive a block message, we will put the block in our database
-			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
-				logger.Info("received block", zap.String("hash", msg.BlockHash().String()))
-				blocks <- msg
-			},
-			//whenever we receive a tx message, we will put the tx in our database
-			//this could get ignored if the blockchain is already syncing
-			// OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
-			// 	if err := putTx(tx, config.Db); err != nil {
-			// 		logger.Error("error putting tx", zap.Error(err))
-			// 	}
-			// },
-		},
-		AllowSelfConns: true,
-	}
-	p, err := peer.NewOutboundPeer(peerCfg, config.PeerAddr)
+	peer, err := NewPeer(config.PeerAddr, config.ChainParams, logger)
 	if err != nil {
-		return nil, fmt.Errorf("syncManager: %v", err)
+		return nil, err
 	}
 
-	conn, err := net.Dial("tcp", p.Addr())
-	if err != nil {
-		return nil, fmt.Errorf("syncManager: %v", err)
-	}
-
-	p.AssociateConnection(conn)
 	return &SyncManager{
-		peer:               p,
-		chainParams:        config.ChainParams,
-		blocks:             blocks,
-		logger:             logger,
-		store:              config.Store,
-		latestQueryMsgDone: done,
+		peer:        peer,
+		chainParams: config.ChainParams,
+		logger:      logger,
+		store:       config.Store,
 	}, nil
 }
 
 func (s *SyncManager) Sync() {
-	//block syncer
-	go func() {
-		for {
-			select {
-			case block := <-s.blocks:
-				if err := s.putBlock(block); err != nil {
-					s.logger.Error("error putting block", zap.Error(err), zap.String("hash", block.BlockHash().String()))
-					if err.Error() != store.ErrKeyNotFound {
-						panic(err)
-					}
-				}
-			}
-		}
-	}()
 
-	go func() {
-		s.peer.WaitForDisconnect()
-		s.logger.Info("peer disconnected")
-	}()
-
-	//block fetcher
 	for {
-		locator, err := s.getBlockLocator()
+		go s.peer.OnBlock(func(block *wire.MsgBlock) error {
+			var err error
+			if err = s.putBlock(block); err != nil {
+				//TODO: handle orphan blocks
+				s.logger.Error("error putting block", zap.Error(err))
+				return err
+			}
+			return nil
+		})
+
+		//block fetcher
+		for {
+			if !s.peer.Connected() {
+				break
+			}
+			locator, err := s.getBlockLocator()
+			if err != nil {
+				s.logger.Error("error getting latest locator", zap.Error(err))
+				continue
+			}
+			fmt.Println("locator", locator)
+			if err := s.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
+				s.logger.Error("error pushing getblocks message", zap.Error(err))
+				continue
+			}
+			<-s.peer.done
+		}
+
+		s.logger.Warn("peer got disconnected... reconnecting")
+		reconnectedPeer, err := s.peer.Reconnect()
 		if err != nil {
-			s.logger.Error("error getting latest locator", zap.Error(err))
-			// continue
+			//TODO: handle reconnection error
+			s.logger.Error("error reconnecting peer", zap.Error(err))
+			panic(err)
 		}
-		fmt.Println("locator", locator)
-		if err := s.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
-			s.logger.Error("error pushing getblocks message", zap.Error(err))
-			// continue
-		}
-
-		<-s.latestQueryMsgDone
-
+		s.peer = reconnectedPeer
 	}
 
 }
@@ -151,8 +96,6 @@ func (s *SyncManager) getBlockLocator() ([]*chainhash.Hash, error) {
 			return nil, err
 		}
 	}
-	s.logger.Info("fetched latest block height", zap.Uint64("height", latestBlockHeight))
-
 	//refer to https://en.bitcoin.it/wiki/Protocol_documentation#getblocks
 	locatorIDs := calculateLocator(latestBlockHeight)
 	blocks, err := s.store.GetBlocks(locatorIDs)
@@ -168,13 +111,7 @@ func (s *SyncManager) getBlockLocator() ([]*chainhash.Hash, error) {
 		hashes[i] = hash
 	}
 
-	// Reverse the list
-	// for i, j := 0, len(hashes)-1; i < j; i, j = i+1, j-1 {
-	// 	hashes[i], hashes[j] = hashes[j], hashes[i]
-	// }
-
 	return hashes, nil
-
 }
 
 func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
