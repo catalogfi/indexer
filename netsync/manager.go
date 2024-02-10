@@ -60,6 +60,7 @@ func (s *SyncManager) Sync() {
 		})
 
 		go s.fetchBlocks()
+
 		s.peer.WaitForDisconnect()
 		close(s.peer.done)
 
