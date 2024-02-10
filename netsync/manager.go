@@ -53,7 +53,7 @@ func (s *SyncManager) Sync() {
 			var err error
 			if err = s.putBlock(block); err != nil {
 				//TODO: handle orphan blocks
-				s.logger.Error("error putting block", zap.Error(err))
+				s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
 				return err
 			}
 			return nil
