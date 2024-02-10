@@ -8,6 +8,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/catalogfi/indexer/store"
 	"go.uber.org/zap"
 )
 
@@ -88,11 +89,11 @@ func (p *Peer) OnBlock(handler func(block *wire.MsgBlock) error) {
 	for {
 		select {
 		case block := <-p.blocks:
-			if !p.Connected() {
-				p.logger.Warn("peer got disconnected... exiting block handler")
+			err := handler(block)
+			if err != nil && err.Error() != store.ErrKeyNotFound {
+				p.logger.Error("error handling block. Exiting", zap.Error(err))
 				return
 			}
-			handler(block)
 		}
 	}
 

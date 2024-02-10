@@ -59,23 +59,9 @@ func (s *SyncManager) Sync() {
 			return nil
 		})
 
-		//block fetcher
-		for {
-			if !s.peer.Connected() {
-				break
-			}
-			locator, err := s.getBlockLocator()
-			if err != nil {
-				s.logger.Error("error getting latest locator", zap.Error(err))
-				continue
-			}
-			fmt.Println("locator", locator)
-			if err := s.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
-				s.logger.Error("error pushing getblocks message", zap.Error(err))
-				continue
-			}
-			<-s.peer.done
-		}
+		go s.fetchBlocks()
+		s.peer.WaitForDisconnect()
+		close(s.peer.done)
 
 		s.logger.Warn("peer got disconnected... reconnecting")
 		reconnectedPeer, err := s.peer.Reconnect()
@@ -85,6 +71,29 @@ func (s *SyncManager) Sync() {
 			panic(err)
 		}
 		s.peer = reconnectedPeer
+	}
+
+}
+
+func (s *SyncManager) fetchBlocks() {
+	for {
+		if !s.peer.Connected() {
+			break
+		}
+		locator, err := s.getBlockLocator()
+		if err != nil {
+			s.logger.Error("error getting latest locator", zap.Error(err))
+			continue
+		}
+		fmt.Println("locator", locator)
+		if err := s.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
+			s.logger.Error("error pushing getblocks message", zap.Error(err))
+			continue
+		}
+		_, ok := <-s.peer.done
+		if !ok {
+			break
+		}
 	}
 
 }
