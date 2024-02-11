@@ -50,8 +50,7 @@ func (s *SyncManager) Sync() {
 
 	for {
 		go s.peer.OnBlock(func(block *wire.MsgBlock) error {
-			var err error
-			if err = s.putBlock(block); err != nil {
+			if err := s.putBlock(block); err != nil {
 				//TODO: handle orphan blocks
 				s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
 				s.logger.Panic("error putting block")

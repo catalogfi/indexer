@@ -1,6 +1,7 @@
 package netsync
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"time"
@@ -14,10 +15,11 @@ import (
 
 type Peer struct {
 	*peer.Peer
-	done        chan struct{}
-	blocks      chan *wire.MsgBlock
-	chainParams *chaincfg.Params
-	logger      *zap.Logger
+	chainParams     *chaincfg.Params
+	done            chan struct{}
+	blocks          chan *wire.MsgBlock
+	logger          *zap.Logger
+	onBlocksContext context.Context
 }
 
 func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Peer, error) {
@@ -85,10 +87,15 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 }
 
 func (p *Peer) OnBlock(handler func(block *wire.MsgBlock) error) {
-
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p.onBlocksContext = ctx
 	for {
 		select {
-		case block := <-p.blocks:
+		case block, ok := <-p.blocks:
+			if !ok {
+				return
+			}
 			err := handler(block)
 			if err != nil && err.Error() != store.ErrKeyNotFound {
 				p.logger.Error("error handling block. Exiting", zap.Error(err))
@@ -96,10 +103,11 @@ func (p *Peer) OnBlock(handler func(block *wire.MsgBlock) error) {
 			}
 		}
 	}
-
 }
 
 func (p *Peer) Reconnect() (*Peer, error) {
+	close(p.done)
+	<-p.onBlocksContext.Done()
 	p.Disconnect()
 	return NewPeer(p.Addr(), p.chainParams, p.logger)
 }
