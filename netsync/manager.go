@@ -54,7 +54,7 @@ func (s *SyncManager) Sync() {
 			if err = s.putBlock(block); err != nil {
 				//TODO: handle orphan blocks
 				s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
-				return err
+				s.logger.Panic("error putting block")
 			}
 			return nil
 		})
@@ -135,6 +135,10 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 	} else {
 		previousBlock, err := s.store.GetBlock(block.Header.PrevBlock.String())
 		if err != nil {
+			if err.Error() == store.ErrKeyNotFound {
+				// we don't have the previous block yet.
+				return nil
+			}
 			return err
 		}
 		if previousBlock.IsOrphan {

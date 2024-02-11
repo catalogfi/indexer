@@ -22,7 +22,11 @@ func main() {
 	dbName := os.Getenv("DB_NAME")
 
 	db, err := database.NewMDBX(dbPath, dbName)
-
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+	db.SetLogger(logger)
 	var params *chaincfg.Params
 	switch os.Getenv("NETWORK") {
 	case "mainnet":
@@ -38,7 +42,7 @@ func main() {
 	syncManager, err := netsync.NewSyncManager(netsync.SyncConfig{
 		PeerAddr:    os.Getenv("PEER_URL"),
 		ChainParams: params,
-		Store:       store.NewStorage(db),
+		Store:       store.NewStorage(db).SetLogger(logger),
 		Logger:      logger,
 	})
 	if err != nil {

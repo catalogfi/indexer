@@ -2,12 +2,14 @@ package database
 
 import (
 	"github.com/erigontech/mdbx-go/mdbx"
+	"go.uber.org/zap"
 )
 
 type MdbxDb struct {
 	env    *mdbx.Env
 	dbName string
 	dbi    mdbx.DBI
+	logger *zap.Logger
 }
 
 func NewMDBX(path string, dbName string) (*MdbxDb, error) {
@@ -32,8 +34,12 @@ func NewMDBX(path string, dbName string) (*MdbxDb, error) {
 		env.Close()
 		return nil, err
 	}
+	logger := zap.NewNop()
+	return (&MdbxDb{env: env, dbName: dbName, logger: logger}).OpenDbi()
+}
 
-	return (&MdbxDb{env: env, dbName: dbName}).OpenDbi()
+func (m *MdbxDb) SetLogger(logger *zap.Logger) {
+	m.logger = logger
 }
 
 func (m *MdbxDb) Close() {
@@ -52,15 +58,23 @@ func (m *MdbxDb) Get(key string) ([]byte, error) {
 }
 
 func (m *MdbxDb) Put(key string, value []byte) error {
-	return m.env.Update(func(txn *mdbx.Txn) error {
+	err := m.env.Update(func(txn *mdbx.Txn) error {
 		return txn.Put(m.dbi, []byte(key), value, 0)
 	})
+	if err != nil {
+		m.logger.Error("error putting value", zap.String("key", key), zap.Error(err))
+	}
+	return err
 }
 
 func (m *MdbxDb) Delete(key string) error {
-	return m.env.Update(func(txn *mdbx.Txn) error {
+	err := m.env.Update(func(txn *mdbx.Txn) error {
 		return txn.Del(m.dbi, []byte(key), nil)
 	})
+	if err != nil {
+		m.logger.Error("error deleting value", zap.String("key", key), zap.Error(err))
+	}
+	return err
 }
 
 func (m *MdbxDb) OpenDbi() (*MdbxDb, error) {

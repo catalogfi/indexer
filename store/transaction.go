@@ -2,6 +2,7 @@ package store
 
 import (
 	"github.com/catalogfi/indexer/model"
+	"go.uber.org/zap"
 )
 
 func (s *Storage) PutTx(tx *model.Transaction) error {
@@ -39,6 +40,10 @@ func (s *Storage) RemoveUTXO(hash string, index uint32) error {
 	//get the utxos from the db
 	utxos, err := s.GetUTXOs(pkScript)
 	if err != nil {
+		if err.Error() == ErrKeyNotFound {
+			// if the utxo is not found, just ignore it
+			return nil
+		}
 		return err
 	}
 	//remove the utxo
@@ -53,11 +58,20 @@ func (s *Storage) RemoveUTXO(hash string, index uint32) error {
 }
 
 func (s *Storage) GetUTXOs(pkScript string) ([]*model.Vout, error) {
+	if len(pkScript) < 10 {
+		// if the pkScript is too short, it's not a valid pkScript
+		return []*model.Vout{}, nil
+	}
 	data, err := s.db.Get(pkScript)
 	if err != nil {
 		return nil, err
 	}
-	return model.UnmarshalVouts(data)
+	vouts, err := model.UnmarshalVouts(data)
+	if err != nil {
+		s.logger.Error("error unmarshalling vouts", zap.Error(err), zap.String("pkScript", pkScript), zap.String("data", string(data)))
+		return nil, err
+	}
+	return vouts, nil
 }
 
 // appends the utxo to the utxos of the pkscript
