@@ -1,6 +1,7 @@
 package netsync
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -49,20 +50,25 @@ func NewSyncManager(config SyncConfig) (*SyncManager, error) {
 func (s *SyncManager) Sync() {
 
 	for {
-		go s.peer.OnBlock(func(block *wire.MsgBlock) error {
-			if err := s.putBlock(block); err != nil {
-				//TODO: handle orphan blocks
-				s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
-				s.logger.Panic("error putting block")
-			}
-			return nil
-		})
+		ctx, cancel := context.WithCancel(context.Background())
+		pendingOnBlocksReq := make(chan struct{})
+		go func() {
+			s.peer.OnBlock(ctx, func(block *wire.MsgBlock) error {
+				if err := s.putBlock(block); err != nil {
+					//TODO: handle orphan blocks
+					s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
+					s.logger.Panic("error putting block")
+				}
+				return nil
+			})
+			pendingOnBlocksReq <- struct{}{}
+		}()
 
 		go s.fetchBlocks()
 
 		s.peer.WaitForDisconnect()
-		close(s.peer.done)
-
+		cancel()
+		<-pendingOnBlocksReq
 		s.logger.Warn("peer got disconnected... reconnecting")
 		reconnectedPeer, err := s.peer.Reconnect()
 		if err != nil {

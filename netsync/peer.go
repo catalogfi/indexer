@@ -15,11 +15,10 @@ import (
 
 type Peer struct {
 	*peer.Peer
-	chainParams     *chaincfg.Params
-	done            chan struct{}
-	blocks          chan *wire.MsgBlock
-	logger          *zap.Logger
-	onBlocksContext context.Context
+	chainParams *chaincfg.Params
+	done        chan struct{}
+	blocks      chan *wire.MsgBlock
+	logger      *zap.Logger
 }
 
 func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Peer, error) {
@@ -86,12 +85,11 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 	}, nil
 }
 
-func (p *Peer) OnBlock(handler func(block *wire.MsgBlock) error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	p.onBlocksContext = ctx
+func (p *Peer) OnBlock(ctx context.Context, handler func(block *wire.MsgBlock) error) {
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case block, ok := <-p.blocks:
 			if !ok {
 				return
@@ -106,8 +104,6 @@ func (p *Peer) OnBlock(handler func(block *wire.MsgBlock) error) {
 }
 
 func (p *Peer) Reconnect() (*Peer, error) {
-	close(p.blocks)
-	<-p.onBlocksContext.Done()
 	p.Disconnect()
 	return NewPeer(p.Addr(), p.chainParams, p.logger)
 }
