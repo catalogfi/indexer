@@ -106,7 +106,7 @@ func (p *Peer) OnBlock(handler func(block *wire.MsgBlock) error) {
 }
 
 func (p *Peer) Reconnect() (*Peer, error) {
-	close(p.done)
+	close(p.blocks)
 	<-p.onBlocksContext.Done()
 	p.Disconnect()
 	return NewPeer(p.Addr(), p.chainParams, p.logger)
