@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -91,7 +92,6 @@ func (s *SyncManager) fetchBlocks() {
 			s.logger.Error("error getting latest locator", zap.Error(err))
 			continue
 		}
-		fmt.Println("locator", locator)
 		if err := s.peer.PushGetBlocksMsg(locator, &chainhash.Hash{}); err != nil {
 			s.logger.Error("error pushing getblocks message", zap.Error(err))
 			continue
@@ -164,14 +164,15 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		}
 		height = previousBlock.Height + 1
 	}
-
+	s.logger.Info("putting block", zap.Uint64("height", height), zap.String("hash", block.BlockHash().String()))
 	existingBlock, err := s.store.GetBlock(block.BlockHash().String())
 	if err != nil && err.Error() != store.ErrKeyNotFound {
+		s.logger.Panic("error getting block", zap.Error(err))
 		return err
 	}
 	if existingBlock != nil {
 		//TODO: handle Orphan blocks
-		s.logger.Info("block already exists,todo: handle orphan blocks")
+		s.logger.Info("block already exists,todo: handle orphan blocks", zap.Uint64("height", height), zap.Uint64("eheight", existingBlock.Height))
 		return nil
 	}
 	txHashes := make([]string, len(block.Transactions))
@@ -191,20 +192,136 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		MerkleRoot:    block.Header.MerkleRoot.String(),
 		Txs:           txHashes,
 	}
-	s.logger.Info("putting block", zap.Uint64("height", newBlock.Height))
 	if err := s.store.PutBlock(&newBlock); err != nil {
+		s.logger.Error("error putting block with hash", zap.Error(err))
 		return err
 	}
 
-	for _, tx := range block.Transactions {
-		if err := s.putTx(tx, block, height); err != nil {
-			return err
-		}
+	vouts, vins, txIns, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
+	if err != nil {
+		return err
 	}
+
+	wg := sync.WaitGroup{}
+
+	err = s.store.PutUTXOs(vouts)
+	if err != nil {
+		s.logger.Error("error putting utxos", zap.Error(err))
+		return err
+	}
+	s.logger.Info("putting raw txs")
+	err = s.store.PutTxs(transactions)
+	if err != nil {
+		s.logger.Error("error putting transactions", zap.Error(err))
+		return err
+	}
+	s.logger.Info("putting raw txs done")
+
+	for _, vin := range vins {
+		go func(vin model.Vin) {
+			wg.Add(1)
+			defer wg.Done()
+			s.logger.Info("removing utxo", zap.String("hash", vin.SpendingTxHash), zap.Uint32("index", vin.SpendingTxIndex))
+			txIn := txIns[vin.SpendingTxHash+string(vin.SpendingTxIndex)]
+			if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
+				if err := s.store.RemoveUTXO(txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); err != nil {
+					s.logger.Error("error removing utxo", zap.Error(err))
+				}
+			}
+		}(vin)
+	}
+	wg.Wait()
+
 	if err := s.store.SetLatestBlockHeight(height); err != nil {
 		return err
 	}
+	s.logger.Info("successfully block indexed", zap.Uint64("height", height))
 	return nil
+}
+
+func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash string) ([]model.Vout, []model.Vin, map[string]*wire.TxIn, []model.Transaction, error) {
+
+	var vins = make([]model.Vin, 0)
+	//TODO: refactor txIns to be in Vins
+	var txIns = make(map[string]*wire.TxIn, 0)
+	var vouts = make([]model.Vout, 0)
+	var transactions = make([]model.Transaction, len(txs))
+
+	for ti, tx := range txs {
+		transactionHash := tx.TxHash().String()
+		for i, txIn := range tx.TxIn {
+			inIndex := uint32(i)
+			witness := make([]string, len(txIn.Witness))
+			for i, w := range txIn.Witness {
+				witness[i] = hex.EncodeToString(w)
+			}
+			witnessString := strings.Join(witness, ",")
+			if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
+				vin := &model.Vin{}
+				vin.Sequence = txIn.Sequence
+				vin.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
+				vin.Witness = witnessString
+				vin.SpendingTxHash = transactionHash
+				vin.SpendingTxIndex = inIndex
+				vins = append(vins, *vin)
+				txIns[transactionHash+string(inIndex)] = txIn
+				continue
+			}
+			// Create coinbase transactions
+			vin := &model.Vin{
+				SpendingTxHash:  transactionHash,
+				SpendingTxIndex: inIndex,
+				Sequence:        txIn.Sequence,
+				SignatureScript: hex.EncodeToString(txIn.SignatureScript),
+				Witness:         witnessString,
+			}
+			vins = append(vins, *vin)
+			txIns[transactionHash+string(inIndex)] = txIn
+		}
+
+		for i, txOut := range tx.TxOut {
+			spenderAddress := ""
+
+			pkScript, pkErr := txscript.ParsePkScript(txOut.PkScript)
+			if pkErr == nil {
+				addr, err := pkScript.Address(s.chainParams)
+				if err != nil {
+					return nil, nil, nil, nil, err
+				}
+				spenderAddress = addr.EncodeAddress()
+			}
+			vout := &model.Vout{
+				FundingTxHash:  transactionHash,
+				FundingTxIndex: uint32(i),
+				PkScript:       hex.EncodeToString(txOut.PkScript),
+				Value:          txOut.Value,
+				Spender:        spenderAddress,
+				Type:           pkScript.Class().String(),
+
+				BlockHash:   blockHash,
+				BlockHeight: height,
+			}
+
+			vouts = append(vouts, *vout)
+		}
+
+		transaction := &model.Transaction{
+			Hash:     transactionHash,
+			LockTime: tx.LockTime,
+			Version:  tx.Version,
+
+			BlockHash:   blockHash,
+			BlockHeight: height,
+
+			Vins:  vins,
+			Vouts: vouts,
+		}
+
+		transactions[ti] = *transaction
+	}
+
+	return vouts, vins, txIns, transactions, nil
+
 }
 
 func (s *SyncManager) putTx(tx *wire.MsgTx, block *wire.MsgBlock, height uint64) error {
@@ -238,7 +355,6 @@ func (s *SyncManager) putTx(tx *wire.MsgTx, block *wire.MsgBlock, height uint64)
 			witness[i] = hex.EncodeToString(w)
 		}
 		witnessString := strings.Join(witness, ",")
-
 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
 			if err := s.store.RemoveUTXO(txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); err != nil {
 				return err

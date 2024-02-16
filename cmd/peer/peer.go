@@ -19,14 +19,13 @@ func main() {
 		panic(err)
 	}
 	dbPath := os.Getenv("DB_PATH")
-	dbName := os.Getenv("DB_NAME")
 
-	db, err := database.NewMDBX(dbPath, dbName)
+	db, err := database.NewRocksDB(dbPath)
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
-	db.SetLogger(logger)
+
 	var params *chaincfg.Params
 	switch os.Getenv("NETWORK") {
 	case "mainnet":

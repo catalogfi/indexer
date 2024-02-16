@@ -37,24 +37,8 @@ func (s *Storage) RemoveUTXO(hash string, index uint32) error {
 	}
 	pkScript := tx.Vouts[index].PkScript
 
-	//get the utxos from the db
-	utxos, err := s.GetUTXOs(pkScript)
-	if err != nil {
-		if err.Error() == ErrKeyNotFound {
-			// if the utxo is not found, just ignore it
-			return nil
-		}
-		return err
-	}
-	//remove the utxo
-	for i, utxo := range utxos {
-		if utxo.FundingTxHash == hash && utxo.FundingTxIndex == index {
-			utxos = append(utxos[:i], utxos[i+1:]...)
-			break
-		}
-	}
-	//put the utxos back in the db
-	return s.db.Put(pkScript, model.MarshalVouts(utxos))
+	key := "IN" + pkScript + string(index)
+	return s.db.Delete(key)
 }
 
 func (s *Storage) GetUTXOs(pkScript string) ([]*model.Vout, error) {
@@ -72,6 +56,26 @@ func (s *Storage) GetUTXOs(pkScript string) ([]*model.Vout, error) {
 		return nil, err
 	}
 	return vouts, nil
+}
+
+func (s *Storage) PutUTXOs(utxos []model.Vout) error {
+	keys := make([]string, 0)
+	values := make([][]byte, 0)
+	for _, utxo := range utxos {
+		keys = append(keys, "IN"+utxo.PkScript+string(utxo.FundingTxIndex))
+		values = append(values, model.MarshalVouts([]*model.Vout{&utxo}))
+	}
+	return s.db.PutMulti(keys, values)
+}
+
+func (s *Storage) PutTxs(txs []model.Transaction) error {
+	keys := make([]string, 0)
+	values := make([][]byte, 0)
+	for _, tx := range txs {
+		keys = append(keys, tx.Hash)
+		values = append(values, tx.Marshal())
+	}
+	return s.db.PutMulti(keys, values)
 }
 
 // appends the utxo to the utxos of the pkscript
