@@ -56,11 +56,21 @@ func (r *RocksDB) Delete(key string) error {
 	return r.db.Delete(wo, []byte(key))
 }
 
+func (r *RocksDB) DeleteMulti(keys []string) error {
+	values := make([][]byte, len(keys))
+	for i := range keys {
+		values[i] = nil
+	}
+	return r.PutMulti(keys, values)
+}
+
 func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {
 
 	//batch 500 keys at a time
 	batchSize := 500
 
+	wo := grocksdb.NewDefaultWriteOptions()
+	defer wo.Destroy()
 	for i := 0; i < len(keys); i += batchSize {
 
 		//create a new batch
@@ -73,8 +83,6 @@ func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {
 		}
 
 		//write the batch
-		wo := grocksdb.NewDefaultWriteOptions()
-		defer wo.Destroy()
 		if err := r.db.Write(wo, batch); err != nil {
 			return err
 		}

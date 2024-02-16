@@ -29,6 +29,20 @@ func (s *Storage) GetTx(hash string) (*model.Transaction, error) {
 	return model.UnmarshalTransaction(data)
 }
 
+func (s *Storage) RemoveUTXOs(hashs []string, indices []uint32) error {
+	//get the tx from the db
+	txs, err := s.GetTxs(hashs)
+	if err != nil {
+		return err
+	}
+	keys := make([]string, 0)
+	for i, tx := range txs {
+		pkScript := tx.Vouts[indices[i]].PkScript
+		keys = append(keys, "IN"+pkScript+string(indices[i]))
+	}
+	return s.db.DeleteMulti(keys)
+}
+
 func (s *Storage) RemoveUTXO(hash string, index uint32) error {
 	//get the tx from the db
 	tx, err := s.GetTx(hash)

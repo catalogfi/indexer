@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -197,40 +197,52 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		return err
 	}
 
-	vouts, vins, txIns, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
+	vouts, _, txIns, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
 	if err != nil {
 		return err
 	}
-
-	wg := sync.WaitGroup{}
 
 	err = s.store.PutUTXOs(vouts)
 	if err != nil {
 		s.logger.Error("error putting utxos", zap.Error(err))
 		return err
 	}
+	timeNow := time.Now()
 	s.logger.Info("putting raw txs")
 	err = s.store.PutTxs(transactions)
 	if err != nil {
 		s.logger.Error("error putting transactions", zap.Error(err))
 		return err
 	}
-	s.logger.Info("putting raw txs done")
+	s.logger.Info("putting raw txs done", zap.Duration("time", time.Since(timeNow)))
 
-	for _, vin := range vins {
-		go func(vin model.Vin) {
-			wg.Add(1)
-			defer wg.Done()
-			s.logger.Info("removing utxo", zap.String("hash", vin.SpendingTxHash), zap.Uint32("index", vin.SpendingTxIndex))
-			txIn := txIns[vin.SpendingTxHash+string(vin.SpendingTxIndex)]
-			if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-				if err := s.store.RemoveUTXO(txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); err != nil {
-					s.logger.Error("error removing utxo", zap.Error(err))
-				}
-			}
-		}(vin)
+	hashes := make([]string, 0)
+	indices := make([]uint32, 0)
+
+	for _, in := range txIns {
+		hashes = append(hashes, in.PreviousOutPoint.Hash.String())
+		indices = append(indices, in.PreviousOutPoint.Index)
 	}
-	wg.Wait()
+
+	err = s.store.RemoveUTXOs(hashes, indices)
+	if err != nil {
+		s.logger.Error("error removing utxos", zap.Error(err))
+		return err
+	}
+
+	// for _, vin := range vins {
+	// 	go func(vin model.Vin) {
+	// 		wg.Add(1)
+	// 		defer wg.Done()
+	// 		s.logger.Info("removing utxo", zap.String("hash", vin.SpendingTxHash), zap.Uint32("index", vin.SpendingTxIndex))
+	// 		txIn := txIns[vin.SpendingTxHash+string(vin.SpendingTxIndex)]
+	// 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
+	// 			if err := s.store.RemoveUTXO(txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); err != nil {
+	// 				s.logger.Error("error removing utxo", zap.Error(err))
+	// 			}
+	// 		}
+	// 	}(vin)
+	// }
 
 	if err := s.store.SetLatestBlockHeight(height); err != nil {
 		return err
@@ -239,16 +251,18 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 	return nil
 }
 
-func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash string) ([]model.Vout, []model.Vin, map[string]*wire.TxIn, []model.Transaction, error) {
+func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash string) ([]model.Vout, []model.Vin, []*wire.TxIn, []model.Transaction, error) {
 
 	var vins = make([]model.Vin, 0)
 	//TODO: refactor txIns to be in Vins
-	var txIns = make(map[string]*wire.TxIn, 0)
+	var txIns = make([]*wire.TxIn, 0)
 	var vouts = make([]model.Vout, 0)
 	var transactions = make([]model.Transaction, len(txs))
 
 	for ti, tx := range txs {
 		transactionHash := tx.TxHash().String()
+		txVins := make([]model.Vin, len(tx.TxIn))
+		txVouts := make([]model.Vout, len(tx.TxOut))
 		for i, txIn := range tx.TxIn {
 			inIndex := uint32(i)
 			witness := make([]string, len(txIn.Witness))
@@ -263,8 +277,8 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 				vin.Witness = witnessString
 				vin.SpendingTxHash = transactionHash
 				vin.SpendingTxIndex = inIndex
-				vins = append(vins, *vin)
-				txIns[transactionHash+string(inIndex)] = txIn
+				txVins[i] = *vin
+				txIns = append(txIns, txIn)
 				continue
 			}
 			// Create coinbase transactions
@@ -275,8 +289,8 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 				SignatureScript: hex.EncodeToString(txIn.SignatureScript),
 				Witness:         witnessString,
 			}
-			vins = append(vins, *vin)
-			txIns[transactionHash+string(inIndex)] = txIn
+			txVins[i] = *vin
+			txIns = append(txIns, txIn)
 		}
 
 		for i, txOut := range tx.TxOut {
@@ -301,8 +315,7 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 				BlockHash:   blockHash,
 				BlockHeight: height,
 			}
-
-			vouts = append(vouts, *vout)
+			txVouts[i] = *vout
 		}
 
 		transaction := &model.Transaction{
@@ -313,10 +326,11 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 			BlockHash:   blockHash,
 			BlockHeight: height,
 
-			Vins:  vins,
-			Vouts: vouts,
+			Vins:  txVins,
+			Vouts: txVouts,
 		}
-
+		vins = append(vins, txVins...)
+		vouts = append(vouts, txVouts...)
 		transactions[ti] = *transaction
 	}
 
