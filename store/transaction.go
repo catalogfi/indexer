@@ -39,12 +39,13 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 	if len(hashes) == 0 {
 		return nil
 	}
-
+	s.logger.Info("getting txs to remove utxos from db", zap.Strings("hashes", hashes), zap.Uint32s("indices", indices))
 	//get the tx from the db
 	txs, err := s.GetTxs(hashes)
 	if err != nil {
 		return err
 	}
+	s.logger.Info("got txs to remove utxos from db", zap.Any("txs", txs))
 	keys := make([]string, 0)
 	vals := make([][]byte, 0)
 	for i, tx := range txs {

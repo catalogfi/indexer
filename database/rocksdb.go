@@ -59,7 +59,7 @@ func (r *RocksDB) Delete(key string) error {
 
 func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
 
-	batchSize := 500
+	batchSize := 100
 	//delete 500 keys at a time using go routines
 	wo := grocksdb.NewDefaultWriteOptions()
 	defer wo.Destroy()
