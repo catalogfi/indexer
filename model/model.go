@@ -89,8 +89,8 @@ func UnmarshalVouts(data []byte) ([]*Vout, error) {
 	return vouts, nil
 }
 
-func MarshalVouts(vouts []*Vout) []byte {
-	data, _ := json.Marshal(vouts)
+func MarshalVout(vout Vout) []byte {
+	data, _ := json.Marshal(vout)
 	return data
 }
 
