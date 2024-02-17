@@ -15,10 +15,10 @@ import (
 
 type Peer struct {
 	*peer.Peer
-	chainParams *chaincfg.Params
-	done        chan struct{}
-	blocks      chan *wire.MsgBlock
-	logger      *zap.Logger
+	chainParams     *chaincfg.Params
+	fetchBlocksDone chan struct{}
+	blocks          chan *wire.MsgBlock
+	logger          *zap.Logger
 }
 
 func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Peer, error) {
@@ -46,7 +46,7 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 					}
 				}
 				if blockMsg > 0 {
-					p.QueueMessage(sendMsg, done)
+					p.QueueMessage(sendMsg, nil)
 				}
 			},
 
@@ -77,11 +77,11 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 
 	p.AssociateConnection(conn)
 	return &Peer{
-		Peer:        p,
-		done:        done,
-		blocks:      blocks,
-		chainParams: chainParams,
-		logger:      logger,
+		Peer:            p,
+		fetchBlocksDone: done,
+		blocks:          blocks,
+		chainParams:     chainParams,
+		logger:          logger,
 	}, nil
 }
 
@@ -95,6 +95,7 @@ func (p *Peer) OnBlock(ctx context.Context, handler func(block *wire.MsgBlock) e
 				return
 			}
 			err := handler(block)
+			p.fetchBlocksDone <- struct{}{}
 			if err != nil && err.Error() != store.ErrKeyNotFound {
 				p.logger.Error("error handling block. Exiting", zap.Error(err))
 				return

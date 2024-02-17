@@ -62,6 +62,7 @@ func (s *SyncManager) Sync() {
 				}
 				return nil
 			})
+
 			pendingOnBlocksReq <- struct{}{}
 		}()
 
@@ -96,9 +97,12 @@ func (s *SyncManager) fetchBlocks() {
 			s.logger.Error("error pushing getblocks message", zap.Error(err))
 			continue
 		}
-		_, ok := <-s.peer.done
-		if !ok {
-			break
+		limit := 500
+		for i := 0; i < limit; i++ {
+			select {
+			case <-s.peer.fetchBlocksDone:
+				continue
+			}
 		}
 	}
 

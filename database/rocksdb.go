@@ -56,12 +56,9 @@ func (r *RocksDB) Delete(key string) error {
 	return r.db.Delete(wo, []byte(key))
 }
 
-func (r *RocksDB) DeleteMulti(keys []string) error {
-	values := make([][]byte, len(keys))
-	for i := range keys {
-		values[i] = nil
-	}
-	return r.PutMulti(keys, values)
+func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
+
+	return r.PutMulti(keys, vals)
 }
 
 func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {

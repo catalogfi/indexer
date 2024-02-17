@@ -47,11 +47,13 @@ func (s *Storage) RemoveUTXOs(hashs []string, indices []uint32) error {
 		return err
 	}
 	keys := make([]string, 0)
+	vals := make([][]byte, 0)
 	for i, tx := range txs {
 		pkScript := tx.Vouts[indices[i]].PkScript
 		keys = append(keys, "IN"+pkScript+string(indices[i]))
+		vals = append(vals, nil)
 	}
-	return s.db.DeleteMulti(keys)
+	return s.db.DeleteMulti(keys, vals)
 }
 
 func (s *Storage) RemoveUTXO(hash string, index uint32) error {
