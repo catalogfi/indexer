@@ -220,10 +220,12 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 	indices := make([]uint32, 0)
 
 	for _, in := range txIns {
+		if in.PreviousOutPoint.Hash.String() == "0000000000000000000000000000000000000000000000000000000000000000" {
+			continue
+		}
 		hashes = append(hashes, in.PreviousOutPoint.Hash.String())
 		indices = append(indices, in.PreviousOutPoint.Index)
 	}
-
 	err = s.store.RemoveUTXOs(hashes, indices)
 	if err != nil {
 		s.logger.Error("error removing utxos", zap.Error(err))

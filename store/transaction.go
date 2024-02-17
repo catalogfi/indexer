@@ -1,6 +1,8 @@
 package store
 
 import (
+	"fmt"
+
 	"github.com/catalogfi/indexer/model"
 	"go.uber.org/zap"
 )
@@ -30,6 +32,15 @@ func (s *Storage) GetTx(hash string) (*model.Transaction, error) {
 }
 
 func (s *Storage) RemoveUTXOs(hashs []string, indices []uint32) error {
+
+	if len(hashs) != len(indices) {
+		return fmt.Errorf("hashes and indices must have the same length")
+	}
+	if len(hashs) == 0 {
+		s.logger.Info("no utxos to remove")
+		return nil
+	}
+
 	//get the tx from the db
 	txs, err := s.GetTxs(hashs)
 	if err != nil {
