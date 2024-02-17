@@ -12,7 +12,9 @@ type RocksDB struct {
 }
 
 func NewRocksDB(path string) (*RocksDB, error) {
+	filter := grocksdb.NewBloomFilter(10)
 	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
+	bbto.SetFilterPolicy(filter)
 	bbto.SetBlockCache(grocksdb.NewLRUCache(3 << 30))
 
 	opts := grocksdb.NewDefaultOptions()
