@@ -31,18 +31,17 @@ func (s *Storage) GetTx(hash string) (*model.Transaction, error) {
 	return model.UnmarshalTransaction(data)
 }
 
-func (s *Storage) RemoveUTXOs(hashs []string, indices []uint32) error {
+func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 
-	if len(hashs) != len(indices) {
+	if len(hashes) != len(indices) {
 		return fmt.Errorf("hashes and indices must have the same length")
 	}
-	if len(hashs) == 0 {
-		s.logger.Info("no utxos to remove")
+	if len(hashes) == 0 {
 		return nil
 	}
 
 	//get the tx from the db
-	txs, err := s.GetTxs(hashs)
+	txs, err := s.GetTxs(hashes)
 	if err != nil {
 		return err
 	}

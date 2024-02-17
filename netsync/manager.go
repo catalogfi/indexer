@@ -219,22 +219,25 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		return err
 	}
 	s.logger.Info("putting raw txs done", zap.Duration("time", time.Since(timeNow)))
-
-	hashes := make([]string, 0)
-	indices := make([]uint32, 0)
-
-	for _, in := range txIns {
+	timeNow = time.Now()
+	hashes := make([]string, len(txIns)-1)
+	indices := make([]uint32, len(txIns)-1)
+	s.logger.Info("removing utxos")
+	for i, in := range txIns {
 		if in.PreviousOutPoint.Hash.String() == "0000000000000000000000000000000000000000000000000000000000000000" {
 			continue
 		}
-		hashes = append(hashes, in.PreviousOutPoint.Hash.String())
-		indices = append(indices, in.PreviousOutPoint.Index)
+		hashes[i] = in.PreviousOutPoint.Hash.String()
+		indices[i] = in.PreviousOutPoint.Index
 	}
+	s.logger.Info("removing utxos step 2")
 	err = s.store.RemoveUTXOs(hashes, indices)
 	if err != nil {
 		s.logger.Error("error removing utxos", zap.Error(err))
 		return err
 	}
+
+	s.logger.Info("removing utxos done", zap.Duration("time", time.Since(timeNow)))
 
 	// for _, vin := range vins {
 	// 	go func(vin model.Vin) {
