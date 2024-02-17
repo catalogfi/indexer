@@ -65,6 +65,7 @@ func (r *RocksDB) GetMulti(keys []string) ([][]byte, error) {
 	values := make([][]byte, len(slices))
 	for i, slice := range slices {
 		values[i] = slice.Data()
+		slice.Free()
 	}
 	return values, nil
 }
@@ -105,35 +106,28 @@ func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
 func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {
 
 	//batch 500 keys at a time
-	batchSize := 500
+	batchSize := 250
 
 	wo := grocksdb.NewDefaultWriteOptions()
+	wo.DisableWAL(true) // disable write-ahead log
 	defer wo.Destroy()
+	wg := sync.WaitGroup{}
 	for i := 0; i < len(keys); i += batchSize {
+		wg.Add(1)
+		go func(i int) {
+			batch := grocksdb.NewWriteBatch()
 
-		//create a new batch
-		batch := grocksdb.NewWriteBatch()
-		defer batch.Destroy()
+			for j := i; j < i+batchSize && j < len(keys); j++ {
+				batch.Put([]byte(keys[j]), values[j])
+			}
 
-		//fill the batch
-		for j := i; j < i+batchSize && j < len(keys); j++ {
-			batch.Put([]byte(keys[j]), values[j])
-		}
-
-		//write the batch
-		if err := r.db.Write(wo, batch); err != nil {
-			return err
-		}
+			//write the batch
+			if err := r.db.Write(wo, batch); err != nil {
+				//TODO: handle error
+				panic(err)
+			}
+			batch.Destroy()
+		}(i)
 	}
 	return nil
 }
-
-// func Tx(db *RocksDB) (*grocksdb.TransactionDB, error) {
-// 	transactionOpts := grocksdb.NewDefaultOptions()
-// 	transactionDbOpts := grocksdb.NewDefaultTransactionDBOptions()
-// 	transactionDB, err := grocksdb.OpenTransactionDb(transactionOpts, transactionDbOpts, "test")
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return transactionDB, nil
-// }
