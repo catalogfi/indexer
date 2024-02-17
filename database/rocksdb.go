@@ -60,7 +60,7 @@ func (r *RocksDB) GetMulti(keys []string) ([][]byte, error) {
 	ro := grocksdb.NewDefaultReadOptions()
 	defer ro.Destroy()
 
-	batchSize := 50
+	batchSize := 100
 	values := make([][]byte, len(keys))
 
 	for i := 0; i < len(keys); i += batchSize {

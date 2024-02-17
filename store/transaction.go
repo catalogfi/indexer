@@ -57,6 +57,8 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 		keys = append(keys, "IN"+pkScript+string(indices[i]))
 		vals = append(vals, nil)
 	}
+	// free the memory
+	txs = nil
 	return s.db.DeleteMulti(keys, vals)
 }
 

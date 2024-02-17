@@ -239,20 +239,6 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 
 	s.logger.Info("removing utxos done", zap.Duration("time", time.Since(timeNow)))
 
-	// for _, vin := range vins {
-	// 	go func(vin model.Vin) {
-	// 		wg.Add(1)
-	// 		defer wg.Done()
-	// 		s.logger.Info("removing utxo", zap.String("hash", vin.SpendingTxHash), zap.Uint32("index", vin.SpendingTxIndex))
-	// 		txIn := txIns[vin.SpendingTxHash+string(vin.SpendingTxIndex)]
-	// 		if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-	// 			if err := s.store.RemoveUTXO(txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index); err != nil {
-	// 				s.logger.Error("error removing utxo", zap.Error(err))
-	// 			}
-	// 		}
-	// 	}(vin)
-	// }
-
 	if err := s.store.SetLatestBlockHeight(height); err != nil {
 		return err
 	}
