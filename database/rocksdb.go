@@ -57,21 +57,34 @@ func (r *RocksDB) Get(key string) ([]byte, error) {
 func (r *RocksDB) GetMulti(keys []string) ([][]byte, error) {
 	ro := grocksdb.NewDefaultReadOptions()
 	defer ro.Destroy()
-	keysInBytes := make([][]byte, len(keys))
-	for i, key := range keys {
-		keysInBytes[i] = []byte(key)
+
+	batchSize := 500
+	values := make([][]byte, len(keys))
+
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+
+		keysInBytes := make([][]byte, end-i)
+		for j, key := range keys[i:end] {
+			keysInBytes[j] = []byte(key)
+		}
+
+		slices, err := r.db.MultiGet(ro, keysInBytes...)
+		if err != nil {
+			return nil, err
+		}
+
+		for j, slice := range slices {
+			data := make([]byte, len(slice.Data()))
+			copy(data, slice.Data())
+			values[i+j] = data
+			slice.Free()
+		}
 	}
-	slices, err := r.db.MultiGet(ro, keysInBytes...)
-	if err != nil {
-		return nil, err
-	}
-	values := make([][]byte, len(slices))
-	for i, slice := range slices {
-		data := make([]byte, len(slice.Data()))
-		copy(data, slice.Data())
-		values[i] = data
-		slice.Free()
-	}
+
 	return values, nil
 }
 
