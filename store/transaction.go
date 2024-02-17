@@ -14,7 +14,7 @@ func (s *Storage) PutTx(tx *model.Transaction) error {
 func (s *Storage) GetTxs(hashes []string) ([]*model.Transaction, error) {
 	data, err := s.db.GetMulti(hashes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting txs: %w", err)
 	}
 	txs := make([]*model.Transaction, 0)
 	for _, d := range data {

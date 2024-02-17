@@ -45,10 +45,13 @@ func (r *RocksDB) Get(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if slice.Data() == nil {
+	defer slice.Free()
+	if !slice.Exists() {
 		return nil, fmt.Errorf("key not found")
 	}
-	return slice.Data(), nil
+	val := append([]byte(nil), slice.Data()...)
+
+	return val, nil
 }
 
 func (r *RocksDB) GetMulti(keys []string) ([][]byte, error) {
@@ -64,7 +67,9 @@ func (r *RocksDB) GetMulti(keys []string) ([][]byte, error) {
 	}
 	values := make([][]byte, len(slices))
 	for i, slice := range slices {
-		values[i] = slice.Data()
+		data := make([]byte, len(slice.Data()))
+		copy(data, slice.Data())
+		values[i] = data
 		slice.Free()
 	}
 	return values, nil
@@ -104,19 +109,17 @@ func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
 }
 
 func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {
-
-	//batch 500 keys at a time
 	batchSize := 250
 
 	wo := grocksdb.NewDefaultWriteOptions()
 	wo.DisableWAL(true) // disable write-ahead log
 	defer wo.Destroy()
 	wg := sync.WaitGroup{}
+
 	for i := 0; i < len(keys); i += batchSize {
 		wg.Add(1)
 		go func(i int) {
 			batch := grocksdb.NewWriteBatch()
-
 			for j := i; j < i+batchSize && j < len(keys); j++ {
 				batch.Put([]byte(keys[j]), values[j])
 			}
@@ -126,8 +129,10 @@ func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {
 				//TODO: handle error
 				panic(err)
 			}
+			wg.Done()
 			batch.Destroy()
 		}(i)
 	}
+	wg.Wait()
 	return nil
 }

@@ -52,7 +52,12 @@ func (s *Storage) GetBlock(hash string) (*model.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	return model.UnmarshalBlock(data)
+	block, err := model.UnmarshalBlock(data)
+	if err != nil {
+		return nil, fmt.Errorf("GetBlock: error unmarshalling block: %w", err)
+	}
+	return block, nil
+
 }
 
 func (s *Storage) GetOrphanBlock(height uint64) (*model.Block, error) {
