@@ -12,9 +12,13 @@ func (s *Storage) PutTx(tx *model.Transaction) error {
 }
 
 func (s *Storage) GetTxs(hashes []string) ([]*model.Transaction, error) {
+	data, err := s.db.GetMulti(hashes)
+	if err != nil {
+		return nil, err
+	}
 	txs := make([]*model.Transaction, 0)
-	for _, hash := range hashes {
-		tx, err := s.GetTx(hash)
+	for _, d := range data {
+		tx, err := model.UnmarshalTransaction(d)
 		if err != nil {
 			return nil, err
 		}
@@ -39,13 +43,13 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 	if len(hashes) == 0 {
 		return nil
 	}
-	s.logger.Info("getting txs to remove utxos from db", zap.Strings("hashes", hashes), zap.Uint32s("indices", indices))
+	s.logger.Info("getting txs to remove utxos from db")
 	//get the tx from the db
 	txs, err := s.GetTxs(hashes)
 	if err != nil {
 		return err
 	}
-	s.logger.Info("got txs to remove utxos from db", zap.Any("txs", txs))
+	s.logger.Info("got txs to remove utxos from db")
 	keys := make([]string, 0)
 	vals := make([][]byte, 0)
 	for i, tx := range txs {
