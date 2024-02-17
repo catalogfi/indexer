@@ -334,27 +334,28 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 }
 
 func (s *SyncManager) orphanBlock(block *model.Block) error {
-	block.IsOrphan = true
+	// block.IsOrphan = true
 
-	txHashes, err := s.store.GetBlockTxs(block.Hash)
-	if err != nil {
-		return err
-	}
+	// txHashes, err := s.store.GetBlockTxs(block.Hash)
+	// if err != nil {
+	// 	return err
+	// }
 
-	txs, err := s.store.GetTxs(txHashes)
-	if err != nil {
-		return err
-	}
+	// txs, err := s.store.GetTxs(txHashes)
+	// if err != nil {
+	// 	return err
+	// }
 
-	for _, tx := range txs {
-		tx.BlockHash = ""
-		tx.BlockHeight = 0
-		err := s.store.PutTx(tx)
-		if err != nil {
-			return err
-		}
-	}
-	return s.store.PutBlock(block)
+	// for _, tx := range txs {
+	// 	tx.BlockHash = ""
+	// 	tx.BlockHeight = 0
+	// 	err := s.store.PutTx(tx)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
+	// return s.store.PutBlock(block)
+	return nil
 }
 
 func (s *SyncManager) putGensisBlock(block *wire.MsgBlock) error {

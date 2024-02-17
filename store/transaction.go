@@ -12,18 +12,18 @@ func (s *Storage) PutTx(tx *model.Transaction) error {
 	return s.db.Put(tx.Hash, tx.Marshal())
 }
 
-func (s *Storage) GetTxs(hashes []string) ([]*model.Transaction, error) {
+func (s *Storage) GetTxs(hashes []string, indices []uint32) ([]string, error) {
 	data, err := s.db.GetMulti(hashes)
 	if err != nil {
 		return nil, fmt.Errorf("error getting txs: %w", err)
 	}
-	txs := make([]*model.Transaction, 0)
-	for _, d := range data {
+	txs := make([]string, 0)
+	for i, d := range data {
 		tx, err := model.UnmarshalTransaction(d)
 		if err != nil {
 			return nil, err
 		}
-		txs = append(txs, tx)
+		txs = append(txs, tx.Vouts[indices[i]].PkScript)
 	}
 	return txs, nil
 }
@@ -56,20 +56,17 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 			if end > len(hashes) {
 				end = len(hashes)
 			}
-			txs, err := s.GetTxs(hashes[i:end])
+			scriptPubKeys, err := s.GetTxs(hashes[i:end], indices[i:end])
 			if err != nil {
 				s.logger.Error("error getting txs to remove utxos from db", zap.Error(err))
 				return
 			}
 			keys := make([]string, 0)
 			vals := make([][]byte, 0)
-			for j, tx := range txs {
-				pkScript := tx.Vouts[indices[i+j]].PkScript
-				keys = append(keys, pkScript+hashes[i+j]+string(indices[i+j]))
+			for j, pk := range scriptPubKeys {
+				keys = append(keys, pk+hashes[i+j]+string(indices[i+j]))
 				vals = append(vals, nil)
 			}
-			// free the memory
-			txs = nil
 			err = s.db.DeleteMulti(keys, vals)
 			if err != nil {
 				s.logger.Error("error deleting utxos from db", zap.Error(err))
