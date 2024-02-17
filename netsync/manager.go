@@ -220,15 +220,15 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 	}
 	s.logger.Info("putting raw txs done", zap.Duration("time", time.Since(timeNow)))
 	timeNow = time.Now()
-	hashes := make([]string, len(txIns)-1)
-	indices := make([]uint32, len(txIns)-1)
+	hashes := make([]string, 0)
+	indices := make([]uint32, 0)
 	s.logger.Info("removing utxos")
-	for i, in := range txIns {
+	for _, in := range txIns {
 		if in.PreviousOutPoint.Hash.String() == "0000000000000000000000000000000000000000000000000000000000000000" {
 			continue
 		}
-		hashes[i] = in.PreviousOutPoint.Hash.String()
-		indices[i] = in.PreviousOutPoint.Index
+		hashes = append(hashes, in.PreviousOutPoint.Hash.String())
+		indices = append(indices, in.PreviousOutPoint.Index)
 	}
 	s.logger.Info("removing utxos step 2")
 	err = s.store.RemoveUTXOs(hashes, indices)
