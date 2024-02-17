@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/linxGnu/grocksdb"
 )
@@ -58,7 +59,29 @@ func (r *RocksDB) Delete(key string) error {
 
 func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
 
-	return r.PutMulti(keys, vals)
+	batchSize := 500
+	//delete 500 keys at a time using go routines
+	wo := grocksdb.NewDefaultWriteOptions()
+	defer wo.Destroy()
+	wg := sync.WaitGroup{}
+	for i := 0; i < len(keys); i += batchSize {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			batch := grocksdb.NewWriteBatch()
+			defer batch.Destroy()
+			for j := i; j < i+batchSize && j < len(keys); j++ {
+				batch.Delete([]byte(keys[j]))
+			}
+			if err := r.db.Write(wo, batch); err != nil {
+				//TODO: handle error
+				panic(err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	return nil
+
 }
 
 func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {
