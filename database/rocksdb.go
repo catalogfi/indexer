@@ -87,6 +87,10 @@ func (r *RocksDB) GetMulti(keys []string) ([][]byte, error) {
 			values[i+j] = data
 			slice.Free()
 		}
+
+		keysInBytes = nil
+		slices = nil
+
 	}
 
 	return values, nil
