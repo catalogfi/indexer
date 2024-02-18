@@ -15,11 +15,12 @@ func NewRocksDB(path string) (*RocksDB, error) {
 	filter := grocksdb.NewBloomFilter(10)
 	bbto := grocksdb.NewDefaultBlockBasedTableOptions()
 	bbto.SetFilterPolicy(filter)
+	bbto.SetOptimizeFiltersForMemory(true)
 	bbto.SetBlockCache(grocksdb.NewLRUCache(3 << 30))
-
 	opts := grocksdb.NewDefaultOptions()
 	opts.SetBlockBasedTableFactory(bbto)
 	opts.SetCreateIfMissing(true)
+	opts.SetUseDirectReads(true)
 
 	db, err := grocksdb.OpenDb(opts, path)
 	if err != nil {
@@ -43,6 +44,7 @@ func (r *RocksDB) Put(key string, value []byte) error {
 func (r *RocksDB) Get(key string) ([]byte, error) {
 	ro := grocksdb.NewDefaultReadOptions()
 	defer ro.Destroy()
+
 	slice, err := r.db.Get(ro, []byte(key))
 	if err != nil {
 		return nil, err
@@ -59,7 +61,7 @@ func (r *RocksDB) Get(key string) ([]byte, error) {
 func (r *RocksDB) GetMulti(keys []string) ([][]byte, error) {
 	ro := grocksdb.NewDefaultReadOptions()
 	defer ro.Destroy()
-
+	ro.SetFillCache(false)
 	batchSize := 100
 	values := make([][]byte, len(keys))
 
@@ -102,6 +104,7 @@ func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
 	//delete 500 keys at a time using go routines
 	wo := grocksdb.NewDefaultWriteOptions()
 	defer wo.Destroy()
+	wo.DisableWAL(true)
 	wg := sync.WaitGroup{}
 	for i := 0; i < len(keys); i += batchSize {
 		wg.Add(1)
