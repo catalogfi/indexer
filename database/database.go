@@ -7,5 +7,5 @@ type Db interface {
 	Put(string, []byte) error
 	PutMulti([]string, [][]byte) error
 	Delete(string) error
-	DeleteMulti([]string, [][]byte) error
+	DeleteMulti([]string) error
 }

@@ -47,7 +47,7 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 	}
 	s.logger.Info("getting txs to remove utxos from db")
 
-	batchSize := 25
+	batchSize := 50
 	wg := sync.WaitGroup{}
 	for i := 0; i < len(hashes); i += batchSize {
 		wg.Add(1)
@@ -62,13 +62,11 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 				s.logger.Error("error getting txs to remove utxos from db", zap.Error(err))
 				return
 			}
-			keys := make([]string, 0)
-			vals := make([][]byte, 0)
+			keys := make([]string, len(scriptPubKeys))
 			for j, pk := range scriptPubKeys {
-				keys = append(keys, pk+hashes[i+j]+string(indices[i+j]))
-				vals = append(vals, nil)
+				keys[j] = pk + hashes[i+j] + string(indices[i+j])
 			}
-			err = s.db.DeleteMulti(keys, vals)
+			err = s.db.DeleteMulti(keys)
 			if err != nil {
 				s.logger.Error("error deleting utxos from db", zap.Error(err))
 				return
@@ -79,36 +77,28 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 	return nil
 }
 
-func (s *Storage) RemoveUTXO(hash string, index uint32) error {
-	//get the tx from the db
-	tx, err := s.GetTx(hash)
-	if err != nil {
-		return err
-	}
-	pkScript := tx.Vouts[index].PkScript
-
-	key := pkScript + hash + string(index)
-	return s.db.Delete(key)
-}
-
 func (s *Storage) PutUTXOs(utxos []model.Vout) error {
-	keys := make([]string, 0)
-	values := make([][]byte, 0)
+	size := len(utxos) * 2
+	keys := make([]string, size)
+	values := make([][]byte, size)
 	for _, utxo := range utxos {
-		keys = append(keys, utxo.PkScript+utxo.FundingTxHash+string(utxo.FundingTxIndex))
-		keys = append(keys, "pk"+utxo.FundingTxHash+string(utxo.FundingTxIndex))
-		values = append(values, model.MarshalVout(utxo))
-		values = append(values, []byte(utxo.PkScript))
+		key1 := utxo.PkScript + utxo.FundingTxHash + string(utxo.FundingTxIndex)
+		key2 := "pk" + utxo.FundingTxHash + string(utxo.FundingTxIndex)
+		value1 := model.MarshalVout(utxo)
+		value2 := []byte(utxo.PkScript)
+
+		keys = append(keys, key1, key2)
+		values = append(values, value1, value2)
 	}
 	return s.db.PutMulti(keys, values)
 }
 
 func (s *Storage) PutTxs(txs []model.Transaction) error {
-	keys := make([]string, 0)
-	values := make([][]byte, 0)
-	for _, tx := range txs {
-		keys = append(keys, tx.Hash)
-		values = append(values, tx.Marshal())
+	keys := make([]string, len(txs))
+	values := make([][]byte, len(txs))
+	for i, tx := range txs {
+		keys[i] = tx.Hash
+		values[i] = tx.Marshal()
 	}
 	return s.db.PutMulti(keys, values)
 }

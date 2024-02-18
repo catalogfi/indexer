@@ -102,7 +102,7 @@ func (r *RocksDB) Delete(key string) error {
 	return r.db.Delete(wo, []byte(key))
 }
 
-func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
+func (r *RocksDB) DeleteMulti(keys []string) error {
 
 	batchSize := 250
 	//delete 500 keys at a time using go routines
@@ -131,7 +131,7 @@ func (r *RocksDB) DeleteMulti(keys []string, vals [][]byte) error {
 }
 
 func (r *RocksDB) PutMulti(keys []string, values [][]byte) error {
-	batchSize := 250
+	batchSize := 500
 
 	wo := grocksdb.NewDefaultWriteOptions()
 	wo.DisableWAL(true) // disable write-ahead log
