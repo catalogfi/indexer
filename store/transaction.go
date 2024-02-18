@@ -46,7 +46,7 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 	}
 	s.logger.Info("getting txs to remove utxos from db")
 
-	batchSize := 50
+	batchSize := 25
 	wg := sync.WaitGroup{}
 	for i := 0; i < len(hashes); i += batchSize {
 		wg.Add(1)
@@ -76,23 +76,6 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 	}
 	wg.Wait()
 	return nil
-
-	//get the tx from the db
-	// txs, err := s.GetTxs(hashes)
-	// if err != nil {
-	// 	return err
-	// }
-	// s.logger.Info("got txs to remove utxos from db")
-	// keys := make([]string, 0)
-	// vals := make([][]byte, 0)
-	// for i, tx := range txs {
-	// 	pkScript := tx.Vouts[indices[i]].PkScript
-	// 	keys = append(keys, pkScript+hashes[i]+string(indices[i]))
-	// 	vals = append(vals, nil)
-	// }
-	// // free the memory
-	// txs = nil
-	// return s.db.DeleteMulti(keys, vals)
 }
 
 func (s *Storage) RemoveUTXO(hash string, index uint32) error {
