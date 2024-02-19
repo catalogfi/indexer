@@ -15,6 +15,9 @@ var (
 func (s *Storage) GetLatestBlockHeight() (uint64, error) {
 	data, err := s.db.Get(latestBlockHeightKey)
 	if err != nil {
+		if err.Error() == ErrKeyNotFound {
+			return 0, ErrGetLatestBlockHeightNone
+		}
 		return 0, err
 	}
 	height, err := strconv.Atoi(string(data))

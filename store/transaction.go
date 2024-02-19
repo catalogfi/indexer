@@ -93,6 +93,22 @@ func (s *Storage) PutUTXOs(utxos []model.Vout) error {
 	return s.db.PutMulti(keys, values)
 }
 
+func (s *Storage) GetUTXOs(scriptPubKey string) ([]*model.Vout, error) {
+	data, err := s.db.GetWithPrefix(scriptPubKey)
+	if err != nil {
+		return nil, err
+	}
+	utxos := make([]*model.Vout, len(data))
+	for i, val := range data {
+		utxo, err := model.UnmarshalVout(val)
+		if err != nil {
+			return nil, err
+		}
+		utxos[i] = utxo
+	}
+	return utxos, nil
+}
+
 func (s *Storage) PutTxs(txs []model.Transaction) error {
 	keys := make([]string, len(txs))
 	values := make([][]byte, len(txs))

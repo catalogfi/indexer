@@ -1,32 +1,11 @@
 package command
 
-// import (
-// 	"bytes"
-// 	"encoding/hex"
-// 	"fmt"
-// 	"math"
-// 	"strconv"
+import "encoding/json"
 
-// 	"github.com/btcsuite/btcd/btcutil"
-// 	"github.com/btcsuite/btcd/wire"
-// 	"github.com/catalogfi/indexer/model"
-// )
-
-// type Storage interface {
-// 	GetBlockHash(height int32) (string, error)
-// 	GetLatestBlockHash() (string, error)
-// 	GetLatestBlockHeight() (int32, error)
-// 	GetTransaction(hash string) (Transaction, error)
-// 	GetBlockFromHash(hash string) (*btcutil.Block, error)
-// 	GetHeaderFromHeight(height int32) (BlockHeader, error)
-// 	GetHeaderFromHash(hash string) (BlockHeader, error)
-// 	ListUnspent(startBlock, endBlock int, addresses []string, includeUnsafe bool, queryOptions ListUnspentQueryOptions) ([]model.OutPoint, error)
-// }
-
-// type Command interface {
-// 	Name() string
-// 	Query(str Storage, params []interface{}) (interface{}, error)
-// }
+type Command interface {
+	Name() string
+	Execute(params json.RawMessage) (interface{}, error)
+}
 
 // // getbestblockhash
 // type getBestBlockHash struct {
