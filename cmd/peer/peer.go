@@ -6,6 +6,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/catalogfi/indexer/database"
 	"github.com/catalogfi/indexer/netsync"
+	"github.com/catalogfi/indexer/rpc"
 	"github.com/catalogfi/indexer/store"
 	"go.uber.org/zap"
 )
@@ -37,15 +38,18 @@ func main() {
 	default:
 		panic("invalid network")
 	}
-
+	store := store.NewStorage(db).SetLogger(logger)
 	syncManager, err := netsync.NewSyncManager(netsync.SyncConfig{
 		PeerAddr:    os.Getenv("PEER_URL"),
 		ChainParams: params,
-		Store:       store.NewStorage(db).SetLogger(logger),
+		Store:       store,
 		Logger:      logger,
 	})
 	if err != nil {
 		panic(err)
 	}
-	syncManager.Sync()
+	go syncManager.Sync()
+
+	rpcServer := rpc.Default(store, params).SetLogger(logger)
+	rpcServer.Run(":8080")
 }

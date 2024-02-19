@@ -15,7 +15,14 @@ func (l *latestBlock) Name() string {
 }
 
 func (l *latestBlock) Execute(params json.RawMessage) (interface{}, error) {
-	return l.store.GetLatestBlockHeight()
+	height, err := l.store.GetLatestBlockHeight()
+	if err != nil {
+		if err.Error() == store.ErrKeyNotFound {
+			return nil, store.ErrGetLatestBlockHeightNone
+		}
+		return nil, err
+	}
+	return height, nil
 }
 
 func LatestBlock(store *store.Storage) Command {

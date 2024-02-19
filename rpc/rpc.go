@@ -15,6 +15,7 @@ type RPC interface {
 	AddCommand(cmd command.Command)
 	HandleJSONRPC(ctx *gin.Context)
 	SetLogger(logger *zap.Logger) RPC
+	Run(port string) error
 }
 
 type rpc struct {
@@ -85,4 +86,10 @@ func Default(store *store.Storage, chainParams *chaincfg.Params) RPC {
 func (r *rpc) SetLogger(logger *zap.Logger) RPC {
 	r.logger = logger
 	return r
+}
+
+func (r *rpc) Run(port string) error {
+	s := gin.Default()
+	s.POST("/", r.HandleJSONRPC)
+	return s.Run(port)
 }
