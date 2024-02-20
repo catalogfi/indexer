@@ -43,3 +43,28 @@ func UTXOs(store *store.Storage, chainParams *chaincfg.Params) Command {
 		chainParams: chainParams,
 	}
 }
+
+// getTx
+
+type getTx struct {
+	store *store.Storage
+}
+
+func (g *getTx) Name() string {
+	return "get_tx"
+}
+
+func (g *getTx) Execute(params json.RawMessage) (interface{}, error) {
+	var p string
+	err := json.Unmarshal(params, &p)
+	if err != nil {
+		return nil, err
+	}
+	return g.store.GetTx(p)
+}
+
+func GetTx(store *store.Storage) Command {
+	return &getTx{
+		store: store,
+	}
+}
