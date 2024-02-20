@@ -94,8 +94,10 @@ func (p *Peer) OnBlock(ctx context.Context, handler func(block *wire.MsgBlock) e
 			if !ok {
 				return
 			}
-			err := handler(block)
+			// we say, we processed the block, such that syncManager can send us more blocks
+			// we do it before processing the block, so that we get blocks as soon as possible
 			p.fetchBlocksDone <- struct{}{}
+			err := handler(block)
 			if err != nil && err.Error() != store.ErrKeyNotFound {
 				p.logger.Error("error handling block. Exiting", zap.Error(err))
 				return
