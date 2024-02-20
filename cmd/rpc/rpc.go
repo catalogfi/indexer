@@ -21,7 +21,7 @@ func main() {
 	}
 	dbPath := os.Getenv("DB_PATH")
 
-	db, err := database.NewRocksDB(dbPath)
+	db, err := database.NewRocksDB(dbPath, logger)
 	if err != nil {
 		panic(err)
 	}

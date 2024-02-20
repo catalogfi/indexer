@@ -2,10 +2,10 @@ package store
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/catalogfi/indexer/model"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 func (s *Storage) PutTx(tx *model.Transaction) error {
@@ -15,7 +15,7 @@ func (s *Storage) PutTx(tx *model.Transaction) error {
 func (s *Storage) GetPkScripts(hashes []string, indices []uint32) ([]string, error) {
 	keys := make([]string, len(hashes))
 	for i, hash := range hashes {
-		keys[i] = "pk" + hash + string(indices[i])
+		keys[i] = getPkKey(hash, indices[i])
 	}
 
 	vals, err := s.db.GetMulti(keys)
@@ -45,14 +45,12 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 	if len(hashes) == 0 {
 		return nil
 	}
-	s.logger.Info("getting txs to remove utxos from db")
 
-	batchSize := 50
-	wg := sync.WaitGroup{}
+	batchSize := 100
+	eg := new(errgroup.Group)
 	for i := 0; i < len(hashes); i += batchSize {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		i := i
+		eg.Go(func() error {
 			end := i + batchSize
 			if end > len(hashes) {
 				end = len(hashes)
@@ -60,7 +58,7 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 			scriptPubKeys, err := s.GetPkScripts(hashes[i:end], indices[i:end])
 			if err != nil {
 				s.logger.Error("error getting txs to remove utxos from db", zap.Error(err))
-				return
+				return err
 			}
 			keys := make([]string, len(scriptPubKeys))
 			for j, pk := range scriptPubKeys {
@@ -69,11 +67,14 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 			err = s.db.DeleteMulti(keys)
 			if err != nil {
 				s.logger.Error("error deleting utxos from db", zap.Error(err))
-				return
+				return err
 			}
-		}(i)
+			return nil
+		})
 	}
-	wg.Wait()
+	if err := eg.Wait(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -83,7 +84,7 @@ func (s *Storage) PutUTXOs(utxos []model.Vout) error {
 	values := make([][]byte, size)
 	for _, utxo := range utxos {
 		key1 := utxo.PkScript + utxo.FundingTxHash + string(utxo.FundingTxIndex)
-		key2 := "pk" + utxo.FundingTxHash + string(utxo.FundingTxIndex)
+		key2 := getPkKey(utxo.FundingTxHash, utxo.FundingTxIndex)
 		value1 := model.MarshalVout(utxo)
 		value2 := []byte(utxo.PkScript)
 
@@ -109,7 +110,23 @@ func (s *Storage) GetUTXOs(scriptPubKey string) ([]*model.Vout, error) {
 	return utxos, nil
 }
 
-func (s *Storage) PutTxs(txs []model.Transaction) error {
+func (s *Storage) GetTxs(hashes []string) ([]*model.Transaction, error) {
+	data, err := s.db.GetMulti(hashes)
+	if err != nil {
+		return nil, err
+	}
+	txs := make([]*model.Transaction, len(data))
+	for i, val := range data {
+		tx, err := model.UnmarshalTransaction(val)
+		if err != nil {
+			return nil, err
+		}
+		txs[i] = tx
+	}
+	return txs, nil
+}
+
+func (s *Storage) PutTxs(txs []*model.Transaction) error {
 	keys := make([]string, len(txs))
 	values := make([][]byte, len(txs))
 	for i, tx := range txs {
@@ -117,4 +134,8 @@ func (s *Storage) PutTxs(txs []model.Transaction) error {
 		values[i] = tx.Marshal()
 	}
 	return s.db.PutMulti(keys, values)
+}
+
+func getPkKey(hash string, i uint32) string {
+	return "pk" + hash + string(i)
 }

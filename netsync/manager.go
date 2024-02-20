@@ -19,10 +19,11 @@ import (
 )
 
 type SyncManager struct {
-	peer        *Peer //TODO: will we have multiple peers in future?
-	logger      *zap.Logger
-	store       *store.Storage
-	chainParams *chaincfg.Params
+	peer         *Peer //TODO: will we have multiple peers in future?
+	logger       *zap.Logger
+	store        *store.Storage
+	chainParams  *chaincfg.Params
+	latestHeight uint64
 }
 
 type SyncConfig struct {
@@ -40,15 +41,25 @@ func NewSyncManager(config SyncConfig) (*SyncManager, error) {
 		return nil, err
 	}
 
+	latestHeight, err := config.Store.GetLatestBlockHeight()
+	if err != nil && err.Error() != store.ErrKeyNotFound {
+		return nil, err
+	}
+
 	return &SyncManager{
-		peer:        peer,
-		chainParams: config.ChainParams,
-		logger:      logger,
-		store:       config.Store,
+		peer:         peer,
+		chainParams:  config.ChainParams,
+		logger:       logger,
+		store:        config.Store,
+		latestHeight: latestHeight,
 	}, nil
 }
 
-func (s *SyncManager) Sync() {
+func (s *SyncManager) Sync() error {
+
+	if err := s.checkForGensisBlock(); err != nil {
+		return err
+	}
 
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -97,12 +108,12 @@ func (s *SyncManager) fetchBlocks() {
 			s.logger.Error("error pushing getblocks message", zap.Error(err))
 			continue
 		}
-		limit := 500
+		limit := 501
+		if len(locator) == 0 {
+			limit = 500
+		}
 		for i := 0; i < limit; i++ {
-			select {
-			case <-s.peer.fetchBlocksDone:
-				continue
-			}
+			<-s.peer.fetchBlocksDone
 		}
 	}
 
@@ -133,52 +144,81 @@ func (s *SyncManager) getBlockLocator() ([]*chainhash.Hash, error) {
 	return hashes, nil
 }
 
-func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
-	height := uint64(0)
-	if block.Header.PrevBlock.String() == s.chainParams.GenesisBlock.BlockHash().String() {
-		s.logger.Info("putting genesis block", zap.String("hash", block.BlockHash().String()))
-		if err := s.putGensisBlock(block); err != nil {
-			return err
-		}
-		height = 1
-	} else {
-		previousBlock, err := s.store.GetBlock(block.Header.PrevBlock.String())
-		if err != nil {
-			if err.Error() == store.ErrKeyNotFound {
-				// we don't have the previous block yet.
-				return nil
-			}
-			return err
-		}
-		if previousBlock.IsOrphan {
-			panic("orphan block")
-			//TODO: handle orphan blocks
-			// newlyOrphanedBlock, err := s.store.GetBlock(previousBlock.Hash)
-			// if err != nil {
-			// 	return err
-			// }
-			// if err := s.orphanBlock(newlyOrphanedBlock); err != nil {
-			// 	return err
-			// }
-
-			// previousBlock.IsOrphan = false
-			// if resp := dbTx.Save(&previousBlock); resp.Error != nil {
-			// 	return handleError(resp.Error)
-			// }
-		}
-		height = previousBlock.Height + 1
-	}
-	s.logger.Info("putting block", zap.Uint64("height", height), zap.String("hash", block.BlockHash().String()))
-	existingBlock, err := s.store.GetBlock(block.BlockHash().String())
-	if err != nil && err.Error() != store.ErrKeyNotFound {
-		s.logger.Panic("error getting block", zap.Error(err))
+func (s *SyncManager) checkForGensisBlock() error {
+	_, exists, err := s.store.GetBlock(s.chainParams.GenesisBlock.BlockHash().String())
+	if err != nil {
 		return err
 	}
-	if existingBlock != nil {
-		//TODO: handle Orphan blocks
-		s.logger.Info("block already exists,todo: handle orphan blocks", zap.Uint64("height", height), zap.Uint64("eheight", existingBlock.Height))
+	if !exists {
+		err := s.putGensisBlock(s.chainParams.GenesisBlock)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
+
+	height := uint64(0)
+	// we check if w already have the block
+
+	exists, err := s.store.BlockExists(block.BlockHash().String())
+	if err != nil {
+		return err
+	}
+	if exists {
 		return nil
 	}
+
+	//handle orphan blocks
+	_, exists, err = s.store.GetOrphanBlock(block.BlockHash().String())
+	if err != nil {
+		return err
+	}
+	if exists {
+		// we already have the orphan block too, so just ignore it
+		return nil
+	}
+
+	previousBlock, exists, err := s.store.GetBlock(block.Header.PrevBlock.String())
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		orphanBlock, exists, err := s.store.GetOrphanBlock(block.Header.PrevBlock.String())
+		if err != nil {
+			return err
+		}
+		if exists {
+			if s.latestHeight <= orphanBlock.Height+1 {
+				// the block we got might not be orphan anymore
+				// reorganize the blocks
+				err := s.reorganizeBlocks(orphanBlock)
+				if err != nil {
+					return err
+				}
+				//proceed with the current block
+			} else {
+				// we don't have the previous block in the main chain or orphan chain
+				// do not process the block
+				return s.putOrphanBlock(block, orphanBlock.Height+1)
+			}
+		} else {
+			// we don't have the previous block in the main chain or orphan chain
+			// do not process the block
+			return nil
+		}
+	}
+
+	if s.latestHeight >= previousBlock.Height+1 {
+		return s.putOrphanBlock(block, previousBlock.Height+1)
+	}
+
+	height = previousBlock.Height + 1
+	s.logger.Info("processing block", zap.Uint64("height", height), zap.String("hash", block.BlockHash().String()))
+
 	txHashes := make([]string, len(block.Transactions))
 	for i, tx := range block.Transactions {
 		txHashes[i] = tx.TxHash().String()
@@ -211,6 +251,7 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		s.logger.Error("error putting utxos", zap.Error(err))
 		return err
 	}
+
 	timeNow := time.Now()
 	s.logger.Info("putting raw txs")
 	err = s.store.PutTxs(transactions)
@@ -219,6 +260,7 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		return err
 	}
 	s.logger.Info("putting raw txs done", zap.Duration("time", time.Since(timeNow)))
+
 	timeNow = time.Now()
 	hashes := make([]string, 0)
 	indices := make([]uint32, 0)
@@ -243,16 +285,94 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		return err
 	}
 	s.logger.Info("successfully block indexed", zap.Uint64("height", height))
+	s.latestHeight = height
 	return nil
 }
 
-func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash string) ([]model.Vout, []model.Vin, []*wire.TxIn, []model.Transaction, error) {
+func (s *SyncManager) putOrphanBlock(block *wire.MsgBlock, height uint64) error {
+	txHashes := make([]string, len(block.Transactions))
+	for i, tx := range block.Transactions {
+		txHashes[i] = tx.TxHash().String()
+	}
+	orphanBlock := model.Block{
+		Hash:          block.Header.BlockHash().String(),
+		Height:        height,
+		IsOrphan:      true,
+		PreviousBlock: block.Header.PrevBlock.String(),
+		Version:       block.Header.Version,
+		Nonce:         block.Header.Nonce,
+		Timestamp:     block.Header.Timestamp,
+		Bits:          block.Header.Bits,
+		MerkleRoot:    block.Header.MerkleRoot.String(),
+		Txs:           txHashes,
+	}
+	if err := s.store.PutOrphanBlock(&orphanBlock); err != nil {
+		return err
+	}
+
+	_, _, _, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
+	if err != nil {
+		return err
+	}
+	if err = s.store.PutTxs(transactions); err != nil {
+		return err
+	}
+	//we do not put utxos for orphan blocks
+	return nil
+}
+
+// goal is to travel back to common ancestor of orphan chain and the main chain
+// and then reorganize the blocks such that the orphan chain becomes the main chain
+// and the main chain becomes the orphan chain (from the common ancestor)
+func (s *SyncManager) reorganizeBlocks(orphanBlock *model.Block) error {
+	// get the common ancestor of the orphan chain and the main chain
+	commonAncestor, exists, err := s.store.GetBlockByHeight(orphanBlock.Height)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("common ancestor block not found")
+	}
+
+	// get all blocks from the main chain from the common ancestor
+	mainChainBlocks, err := s.store.GetBlocksRange(commonAncestor.Height+1, s.latestHeight, false)
+	if err != nil {
+		return err
+	}
+
+	// get all blocks from the orphan chain from the orphan block
+	orphanChainBlocks, err := s.store.GetBlocksRange(orphanBlock.Height+1, s.latestHeight, true)
+	if err != nil {
+		return err
+	}
+
+	// remove all blocks from the main chain from the common ancestor
+	// and put them in the orphan chain
+	for _, block := range mainChainBlocks {
+		if err := s.orphanBlock(block); err != nil {
+			return err
+		}
+	}
+
+	// remove all blocks from the orphan chain from the orphan block
+	// and put them in the main chain
+	for _, block := range orphanChainBlocks {
+		if err := s.unorphanBlock(block); err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+}
+
+func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash string) ([]model.Vout, []model.Vin, []*wire.TxIn, []*model.Transaction, error) {
 
 	var vins = make([]model.Vin, 0)
 	//TODO: refactor txIns to be in Vins
 	var txIns = make([]*wire.TxIn, 0)
 	var vouts = make([]model.Vout, 0)
-	var transactions = make([]model.Transaction, len(txs))
+	var transactions = make([]*model.Transaction, len(txs))
 
 	for ti, tx := range txs {
 		transactionHash := tx.TxHash().String()
@@ -326,36 +446,51 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 		}
 		vins = append(vins, txVins...)
 		vouts = append(vouts, txVouts...)
-		transactions[ti] = *transaction
+		transactions[ti] = transaction
 	}
 
 	return vouts, vins, txIns, transactions, nil
 
 }
 
+func (s *SyncManager) unorphanBlock(block *model.Block) error {
+	block.IsOrphan = false
+	txs, err := s.store.GetBlockTxs(block.Hash, true)
+	if err != nil {
+		return err
+	}
+	vouts := make([]model.Vout, 0)
+	for _, tx := range txs {
+		for _, vout := range tx.Vouts {
+			vouts = append(vouts, vout)
+		}
+	}
+	if err := s.store.PutUTXOs(vouts); err != nil {
+		return err
+	}
+	return s.store.PutBlock(block)
+}
+
 func (s *SyncManager) orphanBlock(block *model.Block) error {
-	// block.IsOrphan = true
+	block.IsOrphan = true
+	txs, err := s.store.GetBlockTxs(block.Hash, false)
+	if err != nil {
+		return err
+	}
+	hashes := make([]string, 0)
+	indices := make([]uint32, 0)
+	for _, tx := range txs {
+		for _, vin := range tx.Vouts {
+			hashes = append(hashes, vin.FundingTxHash)
+			indices = append(indices, vin.FundingTxIndex)
+		}
+	}
 
-	// txHashes, err := s.store.GetBlockTxs(block.Hash)
-	// if err != nil {
-	// 	return err
-	// }
+	if err := s.store.RemoveUTXOs(hashes, indices); err != nil {
+		return err
+	}
 
-	// txs, err := s.store.GetTxs(txHashes)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// for _, tx := range txs {
-	// 	tx.BlockHash = ""
-	// 	tx.BlockHeight = 0
-	// 	err := s.store.PutTx(tx)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
-	// return s.store.PutBlock(block)
-	return nil
+	return s.store.PutOrphanBlock(block)
 }
 
 func (s *SyncManager) putGensisBlock(block *wire.MsgBlock) error {
@@ -382,6 +517,9 @@ func (s *SyncManager) putGensisBlock(block *wire.MsgBlock) error {
 		Hash: "0000000000000000000000000000000000000000000000000000000000000000",
 	}
 	if err := s.store.PutTx(tx); err != nil {
+		return err
+	}
+	if err := s.store.SetLatestBlockHeight(0); err != nil {
 		return err
 	}
 	return nil

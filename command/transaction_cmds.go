@@ -26,7 +26,6 @@ func (u *utxos) Execute(params json.RawMessage) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	//TODO: check if p[0] is a valid address
 	address, err := btcutil.DecodeAddress(p, u.chainParams)
 	if err != nil {
 		return nil, err

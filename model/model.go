@@ -66,9 +66,8 @@ func UnmarshalBlock(data []byte) (*Block, error) {
 	return block, nil
 }
 
-func (b *Block) Marshal() []byte {
-	data, _ := json.Marshal(b)
-	return data
+func (b *Block) Marshal() ([]byte, error) {
+	return json.Marshal(b)
 }
 
 func UnmarshalVout(data []byte) (*Vout, error) {

@@ -21,7 +21,7 @@ func main() {
 	}
 	dbPath := os.Getenv("DB_PATH")
 
-	db, err := database.NewRocksDB(dbPath)
+	db, err := database.NewRocksDB(dbPath, logger)
 	if err != nil {
 		panic(err)
 	}
@@ -33,11 +33,10 @@ func main() {
 		params = &chaincfg.MainNetParams
 	case "testnet":
 		params = &chaincfg.TestNet3Params
-	case "regtest":
-		params = &chaincfg.RegressionNetParams
 	default:
 		panic("invalid network")
 	}
+
 	store := store.NewStorage(db).SetLogger(logger)
 	syncManager, err := netsync.NewSyncManager(netsync.SyncConfig{
 		PeerAddr:    os.Getenv("PEER_URL"),

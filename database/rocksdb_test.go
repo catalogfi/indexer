@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/catalogfi/indexer/database"
+	"go.uber.org/zap"
 )
 
 func TestRocksDB(t *testing.T) {
 	path := t.TempDir()
-	db, err := database.NewRocksDB(path)
+	db, err := database.NewRocksDB(path, zap.NewNop())
 	if err != nil {
 		t.Fatal("expected database error to be nil")
 	}
