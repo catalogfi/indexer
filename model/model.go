@@ -27,34 +27,26 @@ type Transaction struct {
 	Version  int32
 	Safe     bool
 
-	BlockHash   string
-	BlockHeight uint64
+	BlockHash string
 
-	//VINs
-	Vins []Vin
-	//VOUTs
+	Vins  []Vin
 	Vouts []Vout
 }
 
 type Vin struct {
-	SpendingTxHash  string
-	SpendingTxIndex uint32
+	TxId            string
+	Index           uint32
 	Sequence        uint32
 	SignatureScript string
 	Witness         string
 }
 
 type Vout struct {
-	FundingTxHash  string
-	FundingTxIndex uint32
-	PkScript       string
-	Value          int64
-	Spender        string
-	Type           string
-
-	//Block info
-	BlockHash   string
-	BlockHeight uint64
+	TxId         string
+	Index        uint32
+	ScriptPubKey string
+	Value        int64
+	Type         string
 }
 
 func UnmarshalBlock(data []byte) (*Block, error) {

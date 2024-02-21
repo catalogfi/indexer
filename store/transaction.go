@@ -65,8 +65,8 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32, vins []model.Vi
 			txVals := make([][]byte, len(scriptPubKeys))
 			for j, pk := range scriptPubKeys {
 				keys[j] = pk + hashes[i+j] + string(indices[i+j])
-				txKeys[j] = "tx" + pk + vins[i+j].SpendingTxHash
-				txVals[j] = []byte(vins[i+j].SpendingTxHash)
+				txKeys[j] = "tx" + pk + vins[i+j].TxId
+				txVals[j] = []byte(vins[i+j].TxId)
 			}
 			err = s.db.DeleteMulti(keys)
 			if err != nil {
@@ -93,12 +93,12 @@ func (s *Storage) PutUTXOs(utxos []model.Vout) error {
 	keys := make([]string, size)
 	values := make([][]byte, size)
 	for _, utxo := range utxos {
-		key1 := utxo.PkScript + utxo.FundingTxHash + string(utxo.FundingTxIndex)
-		key2 := getPkKey(utxo.FundingTxHash, utxo.FundingTxIndex)
-		key3 := "tx" + utxo.PkScript + utxo.FundingTxHash
+		key1 := utxo.ScriptPubKey + utxo.TxId + string(utxo.Index)
+		key2 := getPkKey(utxo.TxId, utxo.Index)
+		key3 := "tx" + utxo.ScriptPubKey + utxo.TxId
 		value1 := model.MarshalVout(utxo)
-		value2 := []byte(utxo.PkScript)
-		value3 := []byte(utxo.FundingTxHash)
+		value2 := []byte(utxo.ScriptPubKey)
+		value3 := []byte(utxo.TxId)
 		keys = append(keys, key1, key2, key3)
 		values = append(values, value1, value2, value3)
 	}

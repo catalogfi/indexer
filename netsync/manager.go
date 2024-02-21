@@ -401,16 +401,16 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 				vin.Sequence = txIn.Sequence
 				vin.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
 				vin.Witness = witnessString
-				vin.SpendingTxHash = transactionHash
-				vin.SpendingTxIndex = inIndex
+				vin.TxId = transactionHash
+				vin.Index = inIndex
 				txVins[i] = *vin
 				txIns = append(txIns, txIn)
 				continue
 			}
 			// Create coinbase transactions
 			vin := &model.Vin{
-				SpendingTxHash:  transactionHash,
-				SpendingTxIndex: inIndex,
+				TxId:            transactionHash,
+				Index:           inIndex,
 				Sequence:        txIn.Sequence,
 				SignatureScript: hex.EncodeToString(txIn.SignatureScript),
 				Witness:         witnessString,
@@ -420,26 +420,17 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 		}
 
 		for i, txOut := range tx.TxOut {
-			spenderAddress := ""
+			// we ignore the err from ParsePkScript cause
+			// some pkScripts are not standard and we don't care about them
+			pkScript, _ := txscript.ParsePkScript(txOut.PkScript)
 
-			pkScript, pkErr := txscript.ParsePkScript(txOut.PkScript)
-			if pkErr == nil {
-				addr, err := pkScript.Address(s.chainParams)
-				if err != nil {
-					return nil, nil, nil, nil, err
-				}
-				spenderAddress = addr.EncodeAddress()
-			}
 			vout := &model.Vout{
-				FundingTxHash:  transactionHash,
-				FundingTxIndex: uint32(i),
-				PkScript:       hex.EncodeToString(txOut.PkScript),
-				Value:          txOut.Value,
-				Spender:        spenderAddress,
-				Type:           pkScript.Class().String(),
+				TxId:         transactionHash,
+				Index:        uint32(i),
+				ScriptPubKey: hex.EncodeToString(txOut.PkScript),
+				Value:        txOut.Value,
 
-				BlockHash:   blockHash,
-				BlockHeight: height,
+				Type: pkScript.Class().String(),
 			}
 			txVouts[i] = *vout
 		}
@@ -449,8 +440,7 @@ func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash strin
 			LockTime: tx.LockTime,
 			Version:  tx.Version,
 
-			BlockHash:   blockHash,
-			BlockHeight: height,
+			BlockHash: blockHash,
 
 			Vins:  txVins,
 			Vouts: txVouts,
@@ -494,8 +484,8 @@ func (s *SyncManager) orphanBlock(block *model.Block) error {
 	for _, tx := range txs {
 		vins = append(vins, tx.Vins...)
 		for _, vin := range tx.Vouts {
-			hashes = append(hashes, vin.FundingTxHash)
-			indices = append(indices, vin.FundingTxIndex)
+			hashes = append(hashes, vin.TxId)
+			indices = append(indices, vin.Index)
 		}
 	}
 
