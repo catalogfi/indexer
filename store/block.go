@@ -28,6 +28,24 @@ func (s *Storage) GetLatestBlockHeight() (uint64, bool, error) {
 	return uint64(height), true, nil
 }
 
+func (s *Storage) GetLatestTipHash() (string, bool, error) {
+	height, exists, err := s.GetLatestBlockHeight()
+	if err != nil {
+		return "", false, err
+	}
+	if !exists {
+		return "", false, nil
+	}
+	block, exists, err := s.GetBlockByHeight(height)
+	if err != nil {
+		return "", false, err
+	}
+	if !exists {
+		return "", false, nil
+	}
+	return block.Hash, true, nil
+}
+
 func (s *Storage) SetLatestBlockHeight(height uint64) error {
 	heightStr := strconv.Itoa(int(height))
 	return s.db.Put(latestBlockHeightKey, []byte(heightStr))

@@ -12,18 +12,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// curl -H 'Content-Type: application/json' \
-// -d '{
-// 	"method": "get_txs_of_address",
-// 	"params":
-// 	  "mpryyzDmKky3jbNGqniVwiKjXLitxERsxJ"
-// 	,
-// 	"id": "1",
-// 	"version": "2.0"
-//   }' \
-// -X POST \
-// http://localhost:8080/
-
 type RPC interface {
 	RegisterCommand(cmd command.Command)
 	HandleJSONRPC(ctx *gin.Context)
@@ -97,10 +85,11 @@ func (r *rpc) HandleJSONRPC(ctx *gin.Context) {
 
 func Default(store *store.Storage, chainParams *chaincfg.Params) RPC {
 	rpc := New(store)
-	rpc.RegisterCommand(command.LatestBlock(store))
+	rpc.RegisterCommand(command.LatestTip(store))
 	rpc.RegisterCommand(command.UTXOs(store, chainParams))
 	rpc.RegisterCommand(command.GetTx(store))
 	rpc.RegisterCommand(command.GetTxsOfAddress(store, chainParams))
+	rpc.RegisterCommand(command.LatestTipHash(store))
 	return rpc
 }
 
