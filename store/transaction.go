@@ -37,7 +37,7 @@ func (s *Storage) GetTx(hash string) (*model.Transaction, error) {
 	return model.UnmarshalTransaction(data)
 }
 
-func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
+func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32, vins []model.Vin) error {
 
 	if len(hashes) != len(indices) {
 		return fmt.Errorf("hashes and indices must have the same length")
@@ -61,14 +61,24 @@ func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32) error {
 				return err
 			}
 			keys := make([]string, len(scriptPubKeys))
+			txKeys := make([]string, len(scriptPubKeys))
+			txVals := make([][]byte, len(scriptPubKeys))
 			for j, pk := range scriptPubKeys {
 				keys[j] = pk + hashes[i+j] + string(indices[i+j])
+				txKeys[j] = "tx" + pk + vins[i+j].SpendingTxHash + string(vins[i+j].SpendingTxIndex)
+				txVals[j] = []byte(vins[i+j].SpendingTxHash)
 			}
 			err = s.db.DeleteMulti(keys)
 			if err != nil {
 				s.logger.Error("error deleting utxos from db", zap.Error(err))
 				return err
 			}
+
+			if err := s.db.PutMulti(txKeys, txVals); err != nil {
+				s.logger.Error("error putting txs to db", zap.Error(err))
+				return err
+			}
+
 			return nil
 		})
 	}
@@ -85,11 +95,12 @@ func (s *Storage) PutUTXOs(utxos []model.Vout) error {
 	for _, utxo := range utxos {
 		key1 := utxo.PkScript + utxo.FundingTxHash + string(utxo.FundingTxIndex)
 		key2 := getPkKey(utxo.FundingTxHash, utxo.FundingTxIndex)
+		key3 := "tx" + key1
 		value1 := model.MarshalVout(utxo)
 		value2 := []byte(utxo.PkScript)
-
-		keys = append(keys, key1, key2)
-		values = append(values, value1, value2)
+		value3 := []byte(utxo.FundingTxHash)
+		keys = append(keys, key1, key2, key3)
+		values = append(values, value1, value2, value3)
 	}
 	return s.db.PutMulti(keys, values)
 }
@@ -134,6 +145,19 @@ func (s *Storage) PutTxs(txs []*model.Transaction) error {
 		values[i] = tx.Marshal()
 	}
 	return s.db.PutMulti(keys, values)
+}
+
+func (s *Storage) GetTxsOfPubScript(scriptPubKey string) ([]*model.Transaction, error) {
+	data, err := s.db.GetWithPrefix("tx" + scriptPubKey)
+	if err != nil {
+		return nil, err
+	}
+	txHashes := make([]string, len(data))
+	for i, val := range data {
+		txHashes[i] = string(val)
+	}
+
+	return s.GetTxs(txHashes)
 }
 
 func getPkKey(hash string, i uint32) string {

@@ -241,7 +241,7 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		return err
 	}
 
-	vouts, _, txIns, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
+	vouts, vins, txIns, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
 	if err != nil {
 		return err
 	}
@@ -273,7 +273,7 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		indices = append(indices, in.PreviousOutPoint.Index)
 	}
 	s.logger.Info("removing utxos step 2", zap.Int("len", len(hashes)))
-	err = s.store.RemoveUTXOs(hashes, indices)
+	err = s.store.RemoveUTXOs(hashes, indices, vins)
 	if err != nil {
 		s.logger.Error("error removing utxos", zap.Error(err))
 		return err
@@ -479,14 +479,16 @@ func (s *SyncManager) orphanBlock(block *model.Block) error {
 	}
 	hashes := make([]string, 0)
 	indices := make([]uint32, 0)
+	vins := make([]model.Vin, 0)
 	for _, tx := range txs {
+		vins = append(vins, tx.Vins...)
 		for _, vin := range tx.Vouts {
 			hashes = append(hashes, vin.FundingTxHash)
 			indices = append(indices, vin.FundingTxIndex)
 		}
 	}
 
-	if err := s.store.RemoveUTXOs(hashes, indices); err != nil {
+	if err := s.store.RemoveUTXOs(hashes, indices, vins); err != nil {
 		return err
 	}
 

@@ -68,3 +68,31 @@ func GetTx(store *store.Storage) Command {
 		store: store,
 	}
 }
+
+// get_txs_of_address
+
+type getTxsOfAddress struct {
+	store       *store.Storage
+	chainParams *chaincfg.Params
+}
+
+func (g *getTxsOfAddress) Name() string {
+	return "get_txs_of_address"
+}
+
+func (g *getTxsOfAddress) Execute(params json.RawMessage) (interface{}, error) {
+	var p string
+	err := json.Unmarshal(params, &p)
+	if err != nil {
+		return nil, err
+	}
+	//p is an address, but we need to convert it to a script
+	return g.store.GetTxsOfPubScript(p)
+}
+
+func GetTxsOfAddress(store *store.Storage, chainParams *chaincfg.Params) Command {
+	return &getTxsOfAddress{
+		store:       store,
+		chainParams: chainParams,
+	}
+}

@@ -81,6 +81,7 @@ func Default(store *store.Storage, chainParams *chaincfg.Params) RPC {
 	rpc.AddCommand(command.LatestBlock(store))
 	rpc.AddCommand(command.UTXOs(store, chainParams))
 	rpc.AddCommand(command.GetTx(store))
+	rpc.AddCommand(command.GetTxsOfAddress(store, chainParams))
 	return rpc
 }
 
