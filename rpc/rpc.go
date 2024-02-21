@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -11,8 +12,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// curl -H 'Content-Type: application/json' \
+// -d '{
+// 	"method": "get_txs_of_address",
+// 	"params":
+// 	  "mpryyzDmKky3jbNGqniVwiKjXLitxERsxJ"
+// 	,
+// 	"id": "1",
+// 	"version": "2.0"
+//   }' \
+// -X POST \
+// http://localhost:8080/
+
 type RPC interface {
-	AddCommand(cmd command.Command)
+	RegisterCommand(cmd command.Command)
 	HandleJSONRPC(ctx *gin.Context)
 	SetLogger(logger *zap.Logger) RPC
 	Run(port string) error
@@ -32,15 +45,10 @@ type Request struct {
 }
 
 type Response struct {
-	Version string       `json:"version"`
-	ID      string       `json:"id"`
-	Result  interface{}  `json:"result"`
-	Error   *ErrResponse `json:"error"`
-}
-
-type ErrResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Version string      `json:"version"`
+	ID      string      `json:"id"`
+	Result  interface{} `json:"result"`
+	Error   *RpcError   `json:"error"`
 }
 
 func New(store *store.Storage) RPC {
@@ -52,25 +60,36 @@ func New(store *store.Storage) RPC {
 	}
 }
 
-func (r *rpc) AddCommand(cmd command.Command) {
+func (r *rpc) RegisterCommand(cmd command.Command) {
 	r.commands[cmd.Name()] = cmd
 }
 
 func (r *rpc) HandleJSONRPC(ctx *gin.Context) {
 	req := Request{}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: &ErrResponse{-1, err.Error()}, ID: req.ID, Version: req.Version})
+		ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: NewInvalidRequestError(err.Error()), ID: req.ID, Version: req.Version})
 		return
 	}
 	r.logger.Info("rpc request", zap.String("method", req.Method))
 	params, err := json.Marshal(req.Params)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: &ErrResponse{-1, err.Error()}, ID: req.ID, Version: req.Version})
+		ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: NewInvalidParamsError(err.Error()), ID: req.ID, Version: req.Version})
 		return
 	}
+
+	//check if the method is registered or not
+	if _, ok := r.commands[req.Method]; !ok {
+		ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: NewMethodNotFoundError(), ID: req.ID, Version: req.Version})
+		return
+	}
+
 	resp, err := r.commands[req.Method].Execute(params)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: &ErrResponse{-1, err.Error()}, ID: req.ID, Version: req.Version})
+		if errors.As(err, &RpcError{}) {
+			ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: err.(*RpcError), ID: req.ID, Version: req.Version})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, Response{Result: nil, Error: NewInternalError(err.Error()), ID: req.ID, Version: req.Version})
 		return
 	}
 	ctx.JSON(http.StatusOK, Response{Result: resp, Error: nil, ID: req.ID, Version: req.Version})
@@ -78,10 +97,10 @@ func (r *rpc) HandleJSONRPC(ctx *gin.Context) {
 
 func Default(store *store.Storage, chainParams *chaincfg.Params) RPC {
 	rpc := New(store)
-	rpc.AddCommand(command.LatestBlock(store))
-	rpc.AddCommand(command.UTXOs(store, chainParams))
-	rpc.AddCommand(command.GetTx(store))
-	rpc.AddCommand(command.GetTxsOfAddress(store, chainParams))
+	rpc.RegisterCommand(command.LatestBlock(store))
+	rpc.RegisterCommand(command.UTXOs(store, chainParams))
+	rpc.RegisterCommand(command.GetTx(store))
+	rpc.RegisterCommand(command.GetTxsOfAddress(store, chainParams))
 	return rpc
 }
 

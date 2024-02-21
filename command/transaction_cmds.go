@@ -87,7 +87,15 @@ func (g *getTxsOfAddress) Execute(params json.RawMessage) (interface{}, error) {
 		return nil, err
 	}
 	//p is an address, but we need to convert it to a script
-	return g.store.GetTxsOfPubScript(p)
+	address, err := btcutil.DecodeAddress(p, g.chainParams)
+	if err != nil {
+		return nil, err
+	}
+	script, err := txscript.PayToAddrScript(address)
+	if err != nil {
+		return nil, err
+	}
+	return g.store.GetTxsOfPubScript(hex.EncodeToString(script))
 }
 
 func GetTxsOfAddress(store *store.Storage, chainParams *chaincfg.Params) Command {
