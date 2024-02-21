@@ -15,10 +15,11 @@ import (
 
 type Peer struct {
 	*peer.Peer
-	chainParams     *chaincfg.Params
-	fetchBlocksDone chan struct{}
-	blocks          chan *wire.MsgBlock
-	logger          *zap.Logger
+	chainParams *chaincfg.Params
+	// this chan is used to signal that a block has been processed
+	blockProcessed chan struct{}
+	blocks         chan *wire.MsgBlock
+	logger         *zap.Logger
 }
 
 func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Peer, error) {
@@ -77,33 +78,41 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 
 	p.AssociateConnection(conn)
 	return &Peer{
-		Peer:            p,
-		fetchBlocksDone: done,
-		blocks:          blocks,
-		chainParams:     chainParams,
-		logger:          logger,
+		Peer:           p,
+		blockProcessed: done,
+		blocks:         blocks,
+		chainParams:    chainParams,
+		logger:         logger,
 	}, nil
 }
 
-func (p *Peer) OnBlock(ctx context.Context, handler func(block *wire.MsgBlock) error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case block, ok := <-p.blocks:
-			if !ok {
+func (p *Peer) OnBlock(ctx context.Context, handler func(block *wire.MsgBlock) error) chan struct{} {
+	closed := make(chan struct{})
+	go func() {
+		defer func() {
+			closed <- struct{}{}
+		}()
+		for {
+			select {
+			case <-ctx.Done():
 				return
-			}
-			// we say, we processed the block, such that syncManager can send us more blocks
-			// we do it before processing the block, so that we get blocks as soon as possible
-			p.fetchBlocksDone <- struct{}{}
-			err := handler(block)
-			if err != nil && err.Error() != store.ErrKeyNotFound {
-				p.logger.Error("error handling block. Exiting", zap.Error(err))
-				return
+			case block, ok := <-p.blocks:
+				if !ok {
+					return
+				}
+				// we say, we processed the block, such that syncManager can send us more blocks
+				// we do it before processing the block, so that we get blocks as soon as possible
+				p.blockProcessed <- struct{}{}
+				err := handler(block)
+				if err != nil && err.Error() != store.ErrKeyNotFound {
+					p.logger.Error("error handling block. Exiting", zap.Error(err))
+					return
+				}
 			}
 		}
-	}
+
+	}()
+	return closed
 }
 
 func (p *Peer) Reconnect() (*Peer, error) {

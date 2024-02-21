@@ -41,8 +41,8 @@ func NewSyncManager(config SyncConfig) (*SyncManager, error) {
 		return nil, err
 	}
 
-	latestHeight, err := config.Store.GetLatestBlockHeight()
-	if err != nil && err.Error() != store.ErrKeyNotFound {
+	latestHeight, _, err := config.Store.GetLatestBlockHeight()
+	if err != nil {
 		return nil, err
 	}
 
@@ -56,32 +56,26 @@ func NewSyncManager(config SyncConfig) (*SyncManager, error) {
 }
 
 func (s *SyncManager) Sync() error {
-
 	if err := s.checkForGensisBlock(); err != nil {
 		return err
 	}
 
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
-		pendingOnBlocksReq := make(chan struct{})
-		go func() {
-			s.peer.OnBlock(ctx, func(block *wire.MsgBlock) error {
-				if err := s.putBlock(block); err != nil {
-					//TODO: handle orphan blocks
-					s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
-					s.logger.Panic("error putting block")
-				}
-				return nil
-			})
-
-			pendingOnBlocksReq <- struct{}{}
-		}()
-
+		closed := s.peer.OnBlock(ctx, func(block *wire.MsgBlock) error {
+			if err := s.putBlock(block); err != nil {
+				//TODO: handle orphan blocks
+				s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
+				s.logger.Panic("error putting block")
+			}
+			return nil
+		})
 		go s.fetchBlocks()
-
 		s.peer.WaitForDisconnect()
 		cancel()
-		<-pendingOnBlocksReq
+
+		// make sure to wait until the OnBlock goroutine is done
+		<-closed
 		s.logger.Warn("peer got disconnected... reconnecting")
 		reconnectedPeer, err := s.peer.Reconnect()
 		if err != nil {
@@ -99,7 +93,16 @@ func (s *SyncManager) fetchBlocks() {
 		if !s.peer.Connected() {
 			break
 		}
-		locator, err := s.getBlockLocator()
+		latestBlockHeight, _, err := s.store.GetLatestBlockHeight()
+		if err != nil {
+			s.logger.Error("error getting latest block height", zap.Error(err))
+			continue
+		}
+		if latestBlockHeight == uint64(s.peer.LastBlock()) && latestBlockHeight != 0 {
+			s.logger.Info("blockchain synced ✅")
+			return
+		}
+		locator, err := s.getBlockLocator(latestBlockHeight)
 		if err != nil {
 			s.logger.Error("error getting latest locator", zap.Error(err))
 			continue
@@ -108,25 +111,32 @@ func (s *SyncManager) fetchBlocks() {
 			s.logger.Error("error pushing getblocks message", zap.Error(err))
 			continue
 		}
-		limit := 501
-		if len(locator) == 0 {
-			limit = 500
-		}
-		for i := 0; i < limit; i++ {
-			<-s.peer.fetchBlocksDone
-		}
+
+		s.waitForBlocksToBeProcessed(locator)
 	}
 
 }
 
-func (s *SyncManager) getBlockLocator() ([]*chainhash.Hash, error) {
-	latestBlockHeight, err := s.store.GetLatestBlockHeight()
-	if err != nil {
-		if err.Error() != store.ErrKeyNotFound {
-			return nil, err
-		}
+// while syncing, we need to make sure all requested blocks ..
+// are processed first and then only we request for more blocks
+// everytime we request, 500 new blocks are received
+// so we wait for 500 blocks to be processed.
+// if the blockchain is completely synced,
+// then peers send the mined block(we don't request for it, it's just sent to us)
+// In that case, below function will wait for next 501 blocks to be processed
+// and then callee function should handle the case where the blockchain is completely synced
+func (s *SyncManager) waitForBlocksToBeProcessed(locator []*chainhash.Hash) {
+	limit := 501
+	if len(locator) == 0 {
+		limit = 500
 	}
-	//refer to https://en.bitcoin.it/wiki/Protocol_documentation#getblocks
+	for i := 0; i < limit; i++ {
+		<-s.peer.blockProcessed
+	}
+}
+
+func (s *SyncManager) getBlockLocator(latestBlockHeight uint64) ([]*chainhash.Hash, error) {
+
 	locatorIDs := calculateLocator(latestBlockHeight)
 	blocks, err := s.store.GetBlocks(locatorIDs)
 	if err != nil && err.Error() != store.ErrKeyNotFound {
@@ -528,12 +538,12 @@ func (s *SyncManager) putGensisBlock(block *wire.MsgBlock) error {
 	return nil
 }
 
+// refer to https://en.bitcoin.it/wiki/Protocol_documentation#getblocks
 func calculateLocator(topHeight uint64) []uint64 {
 	start := int64(topHeight)
 	var indexes []uint64
 	// Modify the step in the iteration.
 	step := int64(1)
-	fmt.Println("topHeight", topHeight)
 	// Start at the top of the chain and work backwards.
 	for index := start; index > 0; index -= step {
 		// Push top 10 indexes first, then back off exponentially.

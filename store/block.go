@@ -13,16 +13,19 @@ var (
 )
 
 // GetLatestBlockHeight returns the latest block height in the database
-func (s *Storage) GetLatestBlockHeight() (uint64, error) {
+func (s *Storage) GetLatestBlockHeight() (uint64, bool, error) {
 	data, err := s.db.Get(latestBlockHeightKey)
 	if err != nil {
-		return 0, err
+		if err.Error() == ErrKeyNotFound {
+			return 0, false, nil
+		}
+		return 0, false, err
 	}
 	height, err := strconv.Atoi(string(data))
 	if err != nil {
-		return 0, err
+		return 0, false, fmt.Errorf("GetLatestBlockHeight: error converting height to int: %w", err)
 	}
-	return uint64(height), nil
+	return uint64(height), true, nil
 }
 
 func (s *Storage) SetLatestBlockHeight(height uint64) error {
