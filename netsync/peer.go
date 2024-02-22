@@ -9,7 +9,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/catalogfi/indexer/store"
 	"go.uber.org/zap"
 )
 
@@ -18,13 +17,13 @@ type Peer struct {
 	chainParams *chaincfg.Params
 	// this chan is used to signal that a block has been processed
 	blockProcessed chan struct{}
-	blocks         chan *wire.MsgBlock
+	msg            chan interface{}
 	logger         *zap.Logger
 }
 
 func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Peer, error) {
 	done := make(chan struct{})
-	blocks := make(chan *wire.MsgBlock)
+	peerMsg := make(chan interface{})
 	peerCfg := &peer.Config{
 		UserAgentName:    "peer",
 		UserAgentVersion: "1.0.0",
@@ -32,36 +31,21 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 		Services:         wire.SFNodeWitness,
 		TrickleInterval:  time.Second * 10,
 		Listeners: peer.MessageListeners{
-
-			//whenever we receive an inv message, we will request the data from the peer
-			//inventory message is received when a peer requests (getblock) from another peer
-			//and also when peer sends new mempool transactions
 			OnInv: func(p *peer.Peer, msg *wire.MsgInv) {
 				sendMsg := wire.NewMsgGetData()
-				blockMsg := 0
 				for _, inv := range msg.InvList {
-					//TODO: handle tx invs
-					if inv.Type == wire.InvTypeBlock {
-						sendMsg.AddInvVect(inv)
-						blockMsg++
+					if inv.Type == wire.InvTypeTx {
+						logger.Info("received tx inv", zap.String("hash", inv.Hash.String()))
 					}
+					sendMsg.AddInvVect(inv)
 				}
-				if blockMsg > 0 {
-					p.QueueMessage(sendMsg, nil)
-				}
+				p.QueueMessage(sendMsg, nil)
 			},
-
-			//whenever we receive a block message, we will put the block in our database
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
-				logger.Info("received block", zap.String("hash", msg.BlockHash().String()))
-				blocks <- msg
+				peerMsg <- msg
 			},
-			//whenever we receive a tx message, we will put the tx in our database
-			//this could get ignored if the blockchain is already syncing
 			// OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
-			// 	if err := putTx(tx, config.Db); err != nil {
-			// 		logger.Error("error putting tx", zap.Error(err))
-			// 	}
+			// 	peerMsg <- tx
 			// },
 		},
 		AllowSelfConns: true,
@@ -80,13 +64,13 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 	return &Peer{
 		Peer:           p,
 		blockProcessed: done,
-		blocks:         blocks,
+		msg:            peerMsg,
 		chainParams:    chainParams,
 		logger:         logger,
 	}, nil
 }
 
-func (p *Peer) OnBlock(ctx context.Context, handler func(block *wire.MsgBlock) error) chan struct{} {
+func (p *Peer) OnMsg(ctx context.Context, handler func(msg interface{}) error) chan struct{} {
 	closed := make(chan struct{})
 	go func() {
 		defer func() {
@@ -96,15 +80,15 @@ func (p *Peer) OnBlock(ctx context.Context, handler func(block *wire.MsgBlock) e
 			select {
 			case <-ctx.Done():
 				return
-			case block, ok := <-p.blocks:
+			case msg, ok := <-p.msg:
 				if !ok {
 					return
 				}
-				// we say, we processed the block, such that syncManager can send us more blocks
-				// we do it before processing the block, so that we get blocks as soon as possible
-				p.blockProcessed <- struct{}{}
-				err := handler(block)
-				if err != nil && err.Error() != store.ErrKeyNotFound {
+				if _, ok := msg.(*wire.MsgBlock); ok {
+					p.blockProcessed <- struct{}{}
+				}
+				err := handler(msg)
+				if err != nil {
 					p.logger.Error("error handling block. Exiting", zap.Error(err))
 					return
 				}

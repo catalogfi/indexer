@@ -20,10 +20,11 @@ import (
 
 type SyncManager struct {
 	peer         *Peer //TODO: will we have multiple peers in future?
-	logger       *zap.Logger
 	store        *store.Storage
 	chainParams  *chaincfg.Params
 	latestHeight uint64
+	isSynced     bool
+	logger       *zap.Logger
 }
 
 type SyncConfig struct {
@@ -62,13 +63,29 @@ func (s *SyncManager) Sync() error {
 
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
-		closed := s.peer.OnBlock(ctx, func(block *wire.MsgBlock) error {
-			if err := s.putBlock(block); err != nil {
-				//TODO: handle orphan blocks
-				s.logger.Error("error putting block", zap.String("hash", block.BlockHash().String()), zap.Error(err))
-				s.logger.Panic("error putting block")
+		closed := s.peer.OnMsg(ctx, func(msg interface{}) error {
+
+			switch m := msg.(type) {
+			case *wire.MsgBlock:
+				block := m
+				s.logger.Info("received block", zap.String("hash", block.BlockHash().String()))
+
+				if err := s.putBlock(block); err != nil {
+					//TODO: handle orphan blocks
+					s.logger.Error("sync: ", zap.String("hash", block.BlockHash().String()), zap.Error(err))
+					return err
+				}
+				return nil
+			case *wire.MsgTx:
+				tx := m
+				s.logger.Info("received tx", zap.String("txid", tx.TxHash().String()))
+				if err := s.putMempoolTx(tx); err != nil {
+					s.logger.Error("sync: ", zap.String("txid", tx.TxHash().String()), zap.Error(err))
+					return err
+				}
 			}
 			return nil
+
 		})
 		go s.fetchBlocks()
 		s.peer.WaitForDisconnect()
@@ -88,6 +105,80 @@ func (s *SyncManager) Sync() error {
 
 }
 
+func (s *SyncManager) putMempoolTx(tx *wire.MsgTx) error {
+	// if !s.isSynced {
+	// 	// we don't process mempool txs until the blockchain is completely synced
+	// 	return nil
+	// }
+	// transactionHash := tx.TxHash().String()
+	// vins := make([]model.Vin, len(tx.TxIn))
+	// for i, txIn := range tx.TxIn {
+	// 	inIndex := uint32(i)
+	// 	witness := make([]string, len(txIn.Witness))
+	// 	for i, w := range txIn.Witness {
+	// 		witness[i] = hex.EncodeToString(w)
+	// 	}
+	// 	witnessString := strings.Join(witness, ",")
+
+	// 	if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
+	// 		vin := &model.Vin{}
+	// 		vin.Sequence = txIn.Sequence
+	// 		vin.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
+	// 		vin.Witness = witnessString
+	// 		vin.TxId = transactionHash
+	// 		vin.Index = inIndex
+	// 		vins[i] = *vin
+	// 		continue
+	// 	}
+	// 	// Create coinbase transactions
+	// 	vin := &model.Vin{
+	// 		TxId:            transactionHash,
+	// 		Index:           inIndex,
+	// 		Sequence:        txIn.Sequence,
+	// 		SignatureScript: hex.EncodeToString(txIn.SignatureScript),
+	// 		Witness:         witnessString,
+	// 	}
+	// 	vins[i] = *vin
+	// }
+
+	// vouts := make([]model.Vout, len(tx.TxOut))
+	// for i, txOut := range tx.TxOut {
+	// 	// we ignore the err from ParsePkScript cause
+	// 	// some pkScripts are not standard and we don't care about them
+	// 	pkScript, _ := txscript.ParsePkScript(txOut.PkScript)
+	// 	vout := &model.Vout{
+	// 		TxId:         transactionHash,
+	// 		Index:        uint32(i),
+	// 		ScriptPubKey: hex.EncodeToString(txOut.PkScript),
+	// 		Value:        txOut.Value,
+
+	// 		Type: pkScript.Class().String(),
+	// 	}
+	// 	vouts[i] = *vout
+	// }
+
+	// transaction := &model.Transaction{
+	// 	Hash:     transactionHash,
+	// 	LockTime: tx.LockTime,
+	// 	Version:  tx.Version,
+
+	// 	BlockHash: "",
+
+	// 	Vins:  vins,
+	// 	Vouts: vouts,
+	// }
+	// s.logger.Info("putting mempool tx", zap.String("txid", transaction.Hash))
+
+	// if err := s.store.PutMempoolTx(transaction); err != nil {
+	// 	return err
+	// }
+	// if err := s.store.PutMempoolUtxos(vouts); err != nil {
+	// 	return err
+	// }
+
+	return nil
+}
+
 func (s *SyncManager) fetchBlocks() {
 	for {
 		if !s.peer.Connected() {
@@ -100,6 +191,7 @@ func (s *SyncManager) fetchBlocks() {
 		}
 		if latestBlockHeight == uint64(s.peer.LastBlock()) && latestBlockHeight != 0 {
 			s.logger.Info("blockchain synced ✅")
+			s.isSynced = true
 			return
 		}
 		locator, err := s.getBlockLocator(latestBlockHeight)
