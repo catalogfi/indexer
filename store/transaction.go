@@ -9,7 +9,11 @@ import (
 )
 
 func (s *Storage) PutTx(tx *model.Transaction) error {
-	return s.db.Put(tx.Hash, tx.Marshal())
+	data, err := tx.Marshal()
+	if err != nil {
+		return err
+	}
+	return s.db.Put(tx.Hash, data)
 }
 
 func (s *Storage) GetPkScripts(hashes []string, indices []uint32) ([]string, error) {
@@ -29,12 +33,19 @@ func (s *Storage) GetPkScripts(hashes []string, indices []uint32) ([]string, err
 	return scriptPubKeys, nil
 }
 
-func (s *Storage) GetTx(hash string) (*model.Transaction, error) {
+func (s *Storage) GetTx(hash string) (*model.Transaction, bool, error) {
 	data, err := s.db.Get(hash)
 	if err != nil {
-		return nil, err
+		if err.Error() == ErrKeyNotFound {
+			return nil, false, nil
+		}
+		return nil, false, err
 	}
-	return model.UnmarshalTransaction(data)
+	tx, err := model.UnmarshalTransaction(data)
+	if err != nil {
+		return nil, false, err
+	}
+	return tx, true, nil
 }
 
 func (s *Storage) RemoveUTXOs(hashes []string, indices []uint32, vins []model.Vin) error {
@@ -142,7 +153,11 @@ func (s *Storage) PutTxs(txs []*model.Transaction) error {
 	values := make([][]byte, len(txs))
 	for i, tx := range txs {
 		keys[i] = tx.Hash
-		values[i] = tx.Marshal()
+		val, err := tx.Marshal()
+		if err != nil {
+			return err
+		}
+		values[i] = val
 	}
 	return s.db.PutMulti(keys, values)
 }

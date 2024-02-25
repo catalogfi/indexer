@@ -2,24 +2,24 @@ package netsync
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 
+	"github.com/catalogfi/indexer/mempool"
 	"github.com/catalogfi/indexer/model"
 	"github.com/catalogfi/indexer/store"
+	"github.com/catalogfi/indexer/utils"
 	"go.uber.org/zap"
 )
 
 type SyncManager struct {
 	peer         *Peer //TODO: will we have multiple peers in future?
+	mempool      *mempool.Mempool
 	store        *store.Storage
 	chainParams  *chaincfg.Params
 	latestHeight uint64
@@ -53,6 +53,7 @@ func NewSyncManager(config SyncConfig) (*SyncManager, error) {
 		logger:       logger,
 		store:        config.Store,
 		latestHeight: latestHeight,
+		mempool:      mempool.New(config.Store),
 	}, nil
 }
 
@@ -106,77 +107,11 @@ func (s *SyncManager) Sync() error {
 }
 
 func (s *SyncManager) putMempoolTx(tx *wire.MsgTx) error {
-	// if !s.isSynced {
-	// 	// we don't process mempool txs until the blockchain is completely synced
-	// 	return nil
-	// }
-	// transactionHash := tx.TxHash().String()
-	// vins := make([]model.Vin, len(tx.TxIn))
-	// for i, txIn := range tx.TxIn {
-	// 	inIndex := uint32(i)
-	// 	witness := make([]string, len(txIn.Witness))
-	// 	for i, w := range txIn.Witness {
-	// 		witness[i] = hex.EncodeToString(w)
-	// 	}
-	// 	witnessString := strings.Join(witness, ",")
-
-	// 	if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-	// 		vin := &model.Vin{}
-	// 		vin.Sequence = txIn.Sequence
-	// 		vin.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
-	// 		vin.Witness = witnessString
-	// 		vin.TxId = transactionHash
-	// 		vin.Index = inIndex
-	// 		vins[i] = *vin
-	// 		continue
-	// 	}
-	// 	// Create coinbase transactions
-	// 	vin := &model.Vin{
-	// 		TxId:            transactionHash,
-	// 		Index:           inIndex,
-	// 		Sequence:        txIn.Sequence,
-	// 		SignatureScript: hex.EncodeToString(txIn.SignatureScript),
-	// 		Witness:         witnessString,
-	// 	}
-	// 	vins[i] = *vin
-	// }
-
-	// vouts := make([]model.Vout, len(tx.TxOut))
-	// for i, txOut := range tx.TxOut {
-	// 	// we ignore the err from ParsePkScript cause
-	// 	// some pkScripts are not standard and we don't care about them
-	// 	pkScript, _ := txscript.ParsePkScript(txOut.PkScript)
-	// 	vout := &model.Vout{
-	// 		TxId:         transactionHash,
-	// 		Index:        uint32(i),
-	// 		ScriptPubKey: hex.EncodeToString(txOut.PkScript),
-	// 		Value:        txOut.Value,
-
-	// 		Type: pkScript.Class().String(),
-	// 	}
-	// 	vouts[i] = *vout
-	// }
-
-	// transaction := &model.Transaction{
-	// 	Hash:     transactionHash,
-	// 	LockTime: tx.LockTime,
-	// 	Version:  tx.Version,
-
-	// 	BlockHash: "",
-
-	// 	Vins:  vins,
-	// 	Vouts: vouts,
-	// }
-	// s.logger.Info("putting mempool tx", zap.String("txid", transaction.Hash))
-
-	// if err := s.store.PutMempoolTx(transaction); err != nil {
-	// 	return err
-	// }
-	// if err := s.store.PutMempoolUtxos(vouts); err != nil {
-	// 	return err
-	// }
-
-	return nil
+	if !s.isSynced {
+		// we don't process mempool txs until the blockchain is completely synced
+		return nil
+	}
+	return s.mempool.ProcessTx(tx)
 }
 
 func (s *SyncManager) fetchBlocks() {
@@ -343,7 +278,7 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 		return err
 	}
 
-	vouts, vins, txIns, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
+	vouts, vins, txIns, transactions, err := utils.SplitTxs(block.Transactions, block.BlockHash().String())
 	if err != nil {
 		return err
 	}
@@ -413,7 +348,7 @@ func (s *SyncManager) putOrphanBlock(block *wire.MsgBlock, height uint64) error 
 		return err
 	}
 
-	_, _, _, transactions, err := s.splitTxs(block.Transactions, height, block.BlockHash().String())
+	_, _, _, transactions, err := utils.SplitTxs(block.Transactions, block.BlockHash().String())
 	if err != nil {
 		return err
 	}
@@ -466,83 +401,6 @@ func (s *SyncManager) reorganizeBlocks(orphanBlock *model.Block) error {
 	}
 
 	return nil
-
-}
-
-func (s *SyncManager) splitTxs(txs []*wire.MsgTx, height uint64, blockHash string) ([]model.Vout, []model.Vin, []*wire.TxIn, []*model.Transaction, error) {
-
-	var vins = make([]model.Vin, 0)
-	//TODO: refactor txIns to be in Vins
-	var txIns = make([]*wire.TxIn, 0)
-	var vouts = make([]model.Vout, 0)
-	var transactions = make([]*model.Transaction, len(txs))
-
-	for ti, tx := range txs {
-		transactionHash := tx.TxHash().String()
-		txVins := make([]model.Vin, len(tx.TxIn))
-		txVouts := make([]model.Vout, len(tx.TxOut))
-		for i, txIn := range tx.TxIn {
-			inIndex := uint32(i)
-			witness := make([]string, len(txIn.Witness))
-			for i, w := range txIn.Witness {
-				witness[i] = hex.EncodeToString(w)
-			}
-			witnessString := strings.Join(witness, ",")
-			if txIn.PreviousOutPoint.Hash.String() != "0000000000000000000000000000000000000000000000000000000000000000" && txIn.PreviousOutPoint.Index != 4294967295 {
-				vin := &model.Vin{}
-				vin.Sequence = txIn.Sequence
-				vin.SignatureScript = hex.EncodeToString(txIn.SignatureScript)
-				vin.Witness = witnessString
-				vin.TxId = transactionHash
-				vin.Index = inIndex
-				txVins[i] = *vin
-				txIns = append(txIns, txIn)
-				continue
-			}
-			// Create coinbase transactions
-			vin := &model.Vin{
-				TxId:            transactionHash,
-				Index:           inIndex,
-				Sequence:        txIn.Sequence,
-				SignatureScript: hex.EncodeToString(txIn.SignatureScript),
-				Witness:         witnessString,
-			}
-			txVins[i] = *vin
-			txIns = append(txIns, txIn)
-		}
-
-		for i, txOut := range tx.TxOut {
-			// we ignore the err from ParsePkScript cause
-			// some pkScripts are not standard and we don't care about them
-			pkScript, _ := txscript.ParsePkScript(txOut.PkScript)
-
-			vout := &model.Vout{
-				TxId:         transactionHash,
-				Index:        uint32(i),
-				ScriptPubKey: hex.EncodeToString(txOut.PkScript),
-				Value:        txOut.Value,
-
-				Type: pkScript.Class().String(),
-			}
-			txVouts[i] = *vout
-		}
-
-		transaction := &model.Transaction{
-			Hash:     transactionHash,
-			LockTime: tx.LockTime,
-			Version:  tx.Version,
-
-			BlockHash: blockHash,
-
-			Vins:  txVins,
-			Vouts: txVouts,
-		}
-		vins = append(vins, txVins...)
-		vouts = append(vouts, txVouts...)
-		transactions[ti] = transaction
-	}
-
-	return vouts, vins, txIns, transactions, nil
 
 }
 

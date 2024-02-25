@@ -1,8 +1,12 @@
 package model
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
+
+	"github.com/btcsuite/btcd/wire"
 )
 
 type Block struct {
@@ -33,12 +37,57 @@ type Transaction struct {
 	Vouts []Vout
 }
 
+func (t *Transaction) ToWireTx() (*wire.MsgTx, error) {
+	wireTx := &wire.MsgTx{}
+	for _, vin := range t.Vins {
+		witnessBytes, err := vin.DecodeWitness()
+		if err != nil {
+			return nil, err
+		}
+		wireTx.AddTxIn(&wire.TxIn{
+			PreviousOutPoint: wire.OutPoint{},
+			SignatureScript:  []byte(vin.SignatureScript),
+			Sequence:         vin.Sequence,
+			Witness:          witnessBytes,
+		})
+	}
+	for _, vout := range t.Vouts {
+		pkScript, _ := hex.DecodeString(vout.ScriptPubKey)
+		wireTx.AddTxOut(&wire.TxOut{
+			Value:    vout.Value,
+			PkScript: pkScript,
+		})
+	}
+	return wireTx, nil
+}
+
 type Vin struct {
 	TxId            string
 	Index           uint32
 	Sequence        uint32
 	SignatureScript string
 	Witness         string
+}
+
+func (v *Vin) DecodeWitness() ([][]byte, error) {
+	splits := strings.Split(v.Witness, ",")
+	var witness [][]byte
+	for _, s := range splits {
+		w, err := hex.DecodeString(s)
+		if err != nil {
+			return nil, err
+		}
+		witness = append(witness, w)
+	}
+	return witness, nil
+}
+
+func EncodeWitnesss(witness [][]byte) string {
+	var witnessStrings []string
+	for _, w := range witness {
+		witnessStrings = append(witnessStrings, hex.EncodeToString(w))
+	}
+	return strings.Join(witnessStrings, ",")
 }
 
 type Vout struct {
@@ -90,9 +139,8 @@ func (v *Vout) Marshal() []byte {
 	return data
 }
 
-func (t *Transaction) Marshal() []byte {
-	data, _ := json.Marshal(t)
-	return data
+func (t *Transaction) Marshal() ([]byte, error) {
+	return json.Marshal(t)
 }
 
 func UnmarshalTransaction(data []byte) (*Transaction, error) {

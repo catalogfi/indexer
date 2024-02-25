@@ -60,7 +60,14 @@ func (g *getTx) Execute(params json.RawMessage) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return g.store.GetTx(p)
+	tx, exists, err := g.store.GetTx(p)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, store.ErrGetTxNotFound
+	}
+	return tx, nil
 }
 
 func GetTx(store *store.Storage) Command {
