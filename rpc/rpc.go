@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/catalogfi/indexer/command"
@@ -90,6 +91,7 @@ func Default(store *store.Storage, chainParams *chaincfg.Params) RPC {
 	rpc.RegisterCommand(command.GetTx(store))
 	rpc.RegisterCommand(command.GetTxsOfAddress(store, chainParams))
 	rpc.RegisterCommand(command.LatestTipHash(store))
+	rpc.RegisterCommand(command.NewBroadcastCommand(os.Getenv("RPC_URL"), os.Getenv("RPC_USER"), os.Getenv("RPC_PASS")))
 	return rpc
 }
 
