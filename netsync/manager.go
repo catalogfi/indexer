@@ -69,7 +69,6 @@ func (s *SyncManager) Sync() error {
 			switch m := msg.(type) {
 			case *wire.MsgBlock:
 				block := m
-				s.logger.Info("received block", zap.String("hash", block.BlockHash().String()))
 
 				if err := s.putBlock(block); err != nil {
 					//TODO: handle orphan blocks
@@ -107,11 +106,21 @@ func (s *SyncManager) Sync() error {
 }
 
 func (s *SyncManager) putMempoolTx(tx *wire.MsgTx) error {
-	if !s.isSynced {
-		// we don't process mempool txs until the blockchain is completely synced
-		return nil
-	}
-	return s.mempool.ProcessTx(tx)
+    // Get the latest block height from the store
+    latest, _, err := s.store.GetLatestBlockHeight()
+    if err != nil {
+        return err
+    }
+    
+    // If the latest block height is not available or if the latest block height
+    // is different from the last block height reported by the peer,
+    // then return without processing the mempool transaction
+    if latest != 0 && latest != uint64(s.peer.LastBlock()) {
+        // We don't process mempool txs until the blockchain is completely synced
+        return nil
+    }
+    
+    return s.mempool.ProcessTx(tx)
 }
 
 func (s *SyncManager) fetchBlocks() {
@@ -138,8 +147,10 @@ func (s *SyncManager) fetchBlocks() {
 			s.logger.Error("error pushing getblocks message", zap.Error(err))
 			continue
 		}
-
-		s.waitForBlocksToBeProcessed(locator)
+		isProcessed := s.waitForBlocksToBeProcessed(locator,latestBlockHeight)
+        if (!isProcessed) {
+		    return
+		}
 	}
 
 }
@@ -152,15 +163,48 @@ func (s *SyncManager) fetchBlocks() {
 // then peers send the mined block(we don't request for it, it's just sent to us)
 // In that case, below function will wait for next 501 blocks to be processed
 // and then callee function should handle the case where the blockchain is completely synced
-func (s *SyncManager) waitForBlocksToBeProcessed(locator []*chainhash.Hash) {
-	limit := 501
-	if len(locator) == 0 {
-		limit = 500
-	}
-	for i := 0; i < limit; i++ {
-		<-s.peer.blockProcessed
-	}
+func (s *SyncManager) waitForBlocksToBeProcessed(locator []*chainhash.Hash, latestBlockHeight uint64) bool {
+    // Set a default limit
+    limit := 501
+    
+    // Calculate the difference between the last block and the latest block height
+    diff := int(s.peer.LastBlock() - int32(latestBlockHeight))
+    
+    // Check if the latest block height is non-zero and the difference is zero,
+    // which means all blocks have been processed
+    if latestBlockHeight != 0 && diff == 0 {
+        return false
+    }
+    
+    // Adjust limit if the difference is within a reasonable range
+    if diff > 0 && diff < 500 {
+        limit = diff + 1
+    }
+    
+    // If the locator is empty, set limit to 500
+    if len(locator) == 0 {
+        limit = 500
+    }
+    
+    // Iterate up to the limit
+    for i := 0; i < limit; i++ {
+        // Recalculate the difference inside the loop to reflect any changes
+        diff = int(s.peer.LastBlock() - int32(latestBlockHeight))
+        
+        // Check if the latest block height is non-zero and the difference is zero,
+        // which means all blocks have been processed
+        if latestBlockHeight != 0 && diff == 0 {
+            return false
+        }
+        
+        // Wait for a block to be processed
+        <-s.peer.blockProcessed
+    }
+    
+    // All blocks up to the limit have been processed
+    return true
 }
+
 
 func (s *SyncManager) getBlockLocator(latestBlockHeight uint64) ([]*chainhash.Hash, error) {
 
@@ -254,7 +298,7 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 	}
 
 	height = previousBlock.Height + 1
-	s.logger.Info("processing block", zap.Uint64("height", height), zap.String("hash", block.BlockHash().String()))
+	// s.logger.Info("processing block", zap.Uint64("height", height), zap.String("hash", block.BlockHash().String()))
 
 	txHashes := make([]string, len(block.Transactions))
 	for i, tx := range block.Transactions {
@@ -324,6 +368,7 @@ func (s *SyncManager) putBlock(block *wire.MsgBlock) error {
 	}
 	s.logger.Info("successfully block indexed", zap.Uint64("height", height))
 	s.latestHeight = height
+	s.peer.UpdateLastBlockHeight(int32(height))
 	return nil
 }
 

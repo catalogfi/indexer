@@ -44,9 +44,9 @@ func NewPeer(url string, chainParams *chaincfg.Params, logger *zap.Logger) (*Pee
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 				peerMsg <- msg
 			},
-			// OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
-			// 	peerMsg <- tx
-			// },
+			OnTx: func(p *peer.Peer, tx *wire.MsgTx) {
+				peerMsg <- tx
+			},
 		},
 		AllowSelfConns: true,
 	}
