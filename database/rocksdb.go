@@ -181,7 +181,7 @@ func (r *RocksDB) GetWithPrefix(prefix string) ([][]byte, error) {
 	vals := make([][]byte, 0)
 	for iter.Seek([]byte(prefix)); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		if string(key.Data())[:len(prefix)] != prefix {
+		if len(prefix)>len(string(key.Data())) || string(key.Data())[:len(prefix)] != prefix {
 			break
 		}
 		vals = append(vals, append([]byte(nil), iter.Value().Data()...))
